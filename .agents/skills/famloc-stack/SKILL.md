@@ -15,6 +15,11 @@ description: Tech stack dan arsitektur aplikasi FamLoc (live location antar tema
 | Database | **Aiven PostgreSQL + ekstensi PostGIS** | Sudah dimiliki user; koneksi via connection string env var |
 | Realtime MVP | **Polling adaptif** | Foreground/map aktif = tiap 10 dtk; background = 30–60 dtk. TANPA WebSocket di MVP |
 | Notifikasi MVP | **In-app saja** (badge/list) | Push notification (FCM/APNs) = fase 2 — jangan setup FCM di MVP |
+| Avatar | **Aiven Postgres** (`user_avatars.bytea`) | Client resize ≤256px JPEG <100KB sebelum upload; serve via API + Cache-Control; tanpa storage pihak ketiga |
+| Reverse geocoding | **Nominatim OSM** + tabel `geocode_cache` | Maks 1 req/dtk; bulatkan koordinat ~4 desimal sebagai cache key |
+| Link undangan | Landing page statis di Vercel | Tampilkan nama pengundang + `invite_code` + tombol buka app; TANPA deep link native di MVP |
+| Sesi | **Multi-device diperbolehkan** | JWT sampai expired; tidak ada invalidasi lintas perangkat di MVP |
+| Crash reporting | **Sentry free tier** | Pasang SDK sentry_flutter saat scaffold mobile |
 | Auth | **Email + password** (bcrypt hash di server, token JWT). Tanpa OTP/sms tanpa layanan email di MVP — biaya Rp0. Verifikasi email = fase 2. **KEPUTUSAN USER: email transaksional dikirim via SMTP Gmail pribadi** (nodemailer). Simpan kredensial di env var (`SMTP_USER`, `SMTP_PASS`), JANGAN commit |
 | Map SDK | **flutter_map + tile OpenStreetMap** | Gratis, tanpa API key. WAJIB sertakan atribusi © OpenStreetMap contributors. Jangan tambah google_maps_flutter/mapbox di MVP |
 
@@ -32,8 +37,11 @@ description: Tech stack dan arsitektur aplikasi FamLoc (live location antar tema
 ```
 POST   /api/v1/auth/register        { name, email, password } → { token, user }
 POST   /api/v1/auth/login           { email, password } → { token, user }
-GET    /api/v1/me                   profil sendiri (auth)
-PATCH  /api/v1/me/sharing           { sharing_on: boolean }
+GET    /api/v1/me                   profil sendiri (auth)PATCH  /api/v1/me/sharing       { sharing_on: boolean }
+PATCH  /api/v1/me/precision     { mode: 'exact'|'approx' } — approx: server fuzz ±500m
+                                  saat SERVE ke teman (posisi asli tetap tersimpan;
+                                  pemilik selalu lihat akurat)
+PATCH  /api/v1/me/password      { old_password, new_password }
 
 POST   /api/v1/friends/request      { target_user_id } → kirim permintaan
 POST   /api/v1/friends/respond      { request_id, action: accept|reject }
@@ -43,6 +51,16 @@ GET    /api/v1/friend-requests      incoming/outgoing requestsPOST   /api/v1/loc
 GET   /api/v1/friends/locations    → posisi terakhir semua teman yang sharing ON
                                       HANYA teman mutual; termasuk battery & updated_at
                                       untuk status bergerak/diam (turunan speed/heading) & baterai
+PUT    /api/v1/me/avatar            body: image/jpeg base64 (client resize ≤256px, <100KB)
+GET    /api/v1/users/:id/avatar     → serve bytea + Cache-Control immutable (avatar_url = versi/timestamp)
+POST   /api/v1/locations            { lat, lng, accuracy, heading, battery,
+                                      is_mocked } (auth + sharing ON)
+PATCH  /api/v1/me/schedule          { days:[0-6], start:'06:30', end:'15:00',
+                                      enabled:boolean } | null = hapus jadwal
+POST   /api/v1/friends/:id/location-request   minta teman nyalakan sharing
+POST   /api/v1/location-requests/:rid         { action: 'accept'|'dismiss' }
+GET    /api/v1/notifications          notifikasi in-app: friend requests,
+                                      location requests, dsb.
 ```
 
 ## Skema Database (PostgreSQL + PostGIS)
@@ -55,9 +73,24 @@ users (
   email         VARCHAR UNIQUE NOT NULL,
   password_hash VARCHAR NOT NULL,
   name          VARCHAR NOT NULL,
-  avatar_url    TEXT,
+  invite_code   VARCHAR UNIQUE NOT NULL,       -- untuk QR/link undangan
+  avatar_version INTEGER DEFAULT 0,             -- cache-buster URL avatar
+  sharing_on    BOOLEAN DEFAULT FALSE,
+  location_precision VARCHAR DEFAULT 'exact' CHECK (location_precision IN ('exact','approx')),
   sharing_on    BOOLEAN DEFAULT FALSE,
   created_at    TIMESTAMPTZ DEFAULT now()
+)
+
+user_avatars (
+  user_id   UUID PK REFERENCES users(id),
+  image     BYTEA NOT NULL CHECK (octet_length(image) <= 102400), -- max 100KB
+  updated_at TIMESTAMPTZ DEFAULT now()
+)
+
+geocode_cache (
+  lat_lng_key VARCHAR PK,   -- 'lat,lng' dibulatkan ~4 desimal (~11m)
+  address     TEXT NOT NULL,
+  created_at  TIMESTAMPTZ DEFAULT now()
 )
 
 friend_requests (
@@ -80,7 +113,26 @@ user_locations (
   accuracy  REAL,
   heading   REAL,
   battery   SMALLINT CHECK (battery BETWEEN 0 AND 100), -- level baterai %
+  is_mocked BOOLEAN DEFAULT FALSE,                      -- deteksi fake GPS
   updated_at TIMESTAMPTZ DEFAULT now()
+)
+
+sharing_schedules (
+  user_id UUID PK REFERENCES users(id),
+  days    SMALLINT[] NOT NULL,        -- 0=Minggu .. 6=Sabtu
+  start_time TIME NOT NULL,
+  end_time   TIME NOT NULL,
+  enabled BOOLEAN DEFAULT TRUE,
+  -- dieksekusi oleh CLIENT (Workmanager/AlarmManager); server hanya menyimpan
+)
+
+location_requests (
+  id           UUID PK DEFAULT gen_random_uuid(),
+  requester_id UUID REFERENCES users(id),   -- yang meminta
+  target_id    UUID REFERENCES users(id),   -- diminta nyalakan sharing
+  status       VARCHAR CHECK (status IN ('pending','accepted','dismissed')),
+  created_at   TIMESTAMPTZ DEFAULT now(),
+  UNIQUE (requester_id, target_id, status)   -- cegah spam: max 1 pending/target
 )
 CREATE INDEX idx_user_locations_geom ON user_locations USING GIST (geom);
 ```

@@ -55,6 +55,7 @@ Aplikasi mobile yang memungkinkan pengguna berbagi lokasi secara **real-time (li
 #### F1 — Autentikasi
 - Daftar/masuk dengan **email + password** (tanpa OTP — biaya Rp0).
 - Profil dasar: nama, foto profil.
+- Ganti password (verifikasi password lama dulu).
 
 #### F2 — Sistem Pertemanan Mutual (ala Facebook)
 - Cari pengguna lain → kirim **permintaan pertemanan**.
@@ -62,7 +63,7 @@ Aplikasi mobile yang memungkinkan pengguna berbagi lokasi secara **real-time (li
 - Status: `none → requested → friends`, plus opsi block/unfriend.
 - Cara add yang ramah keluarga:
   - **QR code** (scan HP masing-masing) ← prioritas
-  - **Link undangan** via WhatsApp
+  - **Link undangan** via WhatsApp → membuka **landing page statis di Vercel** berisi nama pengundang + kode undangan + tombol "Buka App"; jika app belum terinstall, kode bisa disalin manual
   - Pencarian email/nama
 
 #### F3 — Live Location Sharing
@@ -74,11 +75,18 @@ Aplikasi mobile yang memungkinkan pengguna berbagi lokasi secara **real-time (li
 - **Status bergerak/diam**: marker/kartu menampilkan status turunan dari speed & heading — 🚗 Bergerak · 🏠 Diam · ⏸ Offline.
 - **Status baterai**: level baterai pengguna dikirim bersama lokasi dan tampil di kartu teman (ala Life360) — membedakan "anak hilang" karena HP mati vs sharing dimatikan.
 - Indikator jelas di UI bahwa "lokasimu sedang dibagikan ke N orang".
+- **Mode presisi (toggle di Profil):** 📍 Akurat (default) atau 🌫️ Kasar (±500m). Pengaburan dilakukan SERVER sebelum data dikirim ke teman — posisi presisi tidak pernah keluar dari server saat mode kasar; pemilik selalu melihat posisi akuratnya sendiri.
+- **Jadwal sharing otomatis:** pengguna bisa set jadwal (hari + jam mulai/selesai, mis. Sen–Jum 06.30–15.00); app menyalakan/mematikan sharing otomatis. Penjadwalan dieksekusi di CLIENT (Workmanager/AlarmManager) karena backend serverless tanpa timer; catatan: keandalan tergantung OS/vendor (lihat risiko autostart).
+- **"Minta lokasi":** tombol di kartu teman offline → kirim permintaan halus "Ayah minta lihat lokasimu" → muncul sebagai notifikasi in-app di penerima dengan tombol "Nyalakan sharing" / abaikan. Tidak ada paksaan — penerima bebas menolak.
+- **Deteksi fake GPS:** flag `is_mocked` dari sensor lokasi Android dikirim bersama posisi; jika true, marker teman ditandai ⚠️ "posisi mungkin tidak akurat" (tidak diblokir, hanya transparan).
 
 #### F4 — Peta
 - Peta dengan marker semua teman yang sedang sharing.
 - Marker menampilkan nama + foto, tap → detail (akurasi, waktu update, alamat kasar).
+- Alamat kasar = reverse geocoding **Nominatim OSM** (gratis, maks 1 req/dtk, hasil di-cache permanen di DB).
+- Kartu teman menampilkan **jarak**: "2,4 km dari kamu" (dihitung dari data posisi yang sudah ada).
 - Tombol "fokus ke saya" dan "fokus ke teman X".
+- Screen **"Keluargaku"**: daftar semua teman mutual dengan status live/offline, baterai, status bergerak/diam, dan jarak.
 - Refresh otomatis via **polling adaptif** (tiap 10 dtk saat map aktif/foreground; 30–60 dtk background) — tanpa WebSocket di MVP.
 
 #### F5 — Notifikasi
@@ -152,6 +160,12 @@ Daftar (email + password) → Lengkapi profil
 | DB | **Aiven PostgreSQL + ekstensi PostGIS** (query "teman dalam radius") — sudah dimiliki user |
 | Auth | **Email + password** (hash bcrypt, token JWT) — tanpa OTP agar biaya Rp0. Verifikasi email opsional fase 2. **Keputusan user:** email transaksional dikirim via SMTP Gmail pribadi (nodemailer + App Password); catatan risiko: limit ±500/hari, From ditulis ulang ke alamat Gmail, rawan spam — upgrade ke Brevo/Resend bila nanti jadi masalah |
 | Push notification | **Fase 2** (FCM + APNs). MVP cukup notifikasi in-app — menghindari setup APNs/FCM yang kompleks di awal |
+| Avatar | Disimpan di **Aiven PostgreSQL** (tabel `user_avatars`, kolom bytea). Client resize ke ±256px JPEG (<100KB) sebelum upload; dilayani via endpoint API dengan cache header |
+| Reverse geocoding | **Nominatim OSM** (gratis) dengan cache permanen di tabel `geocode_cache` — hormati limit 1 req/dtk |
+| Link undangan | Landing page statis di Vercel (kode undangan + tombol buka app); tanpa deep link native di MVP |
+| Crash reporting | **Sentry free tier** di Flutter app |
+| Sesi | **Multi-device diperbolehkan** (JWT valid sampai expired, tanpa invalidasi lintas perangkat) |
+| Kebijakan privasi | Halaman statis di Vercel (wajib untuk Play Store): jelaskan data lokasi yang dikumpulkan, siapa yang bisa lihat, cara hapus akun |
 | Upgrade path fase 2 | Tempel Ably/Pusher free tier untuk WebSocket tanpa rombak backend, atau pindah ke Railway bila butuh long-running server |
 
 **Catatan teknis penting:**

@@ -48,7 +48,7 @@ Estetika seperti shot populer di Dribbble untuk app consumer tech:
 - **MapMarker teman**: lingkaran avatar (48dp) + border warna sesuai status (aktif = primaryGradient, stale > 15 mnt = abu) + label nama; pin drop shadow tinted; muncul dengan animasi scale-in.
 - **SharingToggle**: switch besar bergaya pill-gradient di home app bar; saat ON tampilkan banner glassmorphism tipis "📍 Lokasimu dibagikan ke {N} orang · ketuk untuk matikan".
 - **BottomSheet detail teman** (drag dari marker): rounded-top 28dp, foto, nama, alamat kasar, akurasi ±Xm, update terakhir, tombol "Lihat rute" (pill gradient).
-- **FriendCard**: card radius 24dp + soft shadow tinted, daftar teman mutual dengan status lokasi (live / offline); avatar dengan ring gradient saat live. Sertakan: chip status (🚗 Bergerak · 🏠 Diam · ⏸ Offline) + ikon baterai dengan persentase.
+- **FriendCard**: card radius 24dp + soft shadow tinted, daftar teman mutual dengan status lokasi (live / offline); avatar dengan ring gradient saat live. Sertakan: chip status (🚗 Bergerak · 🏠 Diam · ⏸ Offline) + ikon baterai dengan persentase. Jika teman offline: tombol sekunder "Minta lokasi"; jika `is_mocked`: badge ⚠️ kecil "posisi mungkin tidak akurat" (amber, bukan merah).
 - **Tombol utama**: pill full-rounded, gradient primary, teks putih semibold, pressed = scale 0.97.
 - **Chip status**: pill kecil dengan background tint 10% warna status; warna: bergerak = primaryGradient tint, diam = abu netral, offline = abu redup.
 - **Indikator baterai**: ikon baterai kecil di samping nama pada FriendCard & bottom sheet detail teman; <20% = amber (secondary), bukan merah (merah hanya SOS).
@@ -58,9 +58,14 @@ Estetika seperti shot populer di Dribbble untuk app consumer tech:
 1. **Splash/Onboarding** — 3 slide: apa itu app, privasi ("hanya teman yang bisa lihat"), izin lokasi.
 2. **Login/Daftar** — email + password → lengkapi profil; hero gradient + ilustrasi playful ala Dribbble.
 3. **Map Home** ⭐ — peta fullscreen, FAB toggle sharing, search bar teman, bottom sheet daftar teman.
-4. **Tambah Teman** — tab: QR code saya / Scan QR / link undangan.
-5. **Permintaan Pertemanan** — list incoming/outgoing, accept/reject.
-6. **Profil & Privasi** — edit profil, riwayat sharing, blokir, logout.
+4. **Keluargaku** — daftar semua teman: chip status (bergerak/diam/offline), ikon baterai, jarak "X km dari kamu".
+5. **Tambah Teman** — tab: QR code saya / Scan QR / link undangan.
+6. **Permintaan Pertemanan** — list incoming/outgoing, accept/reject.
+7. **Profil & Privasi** — edit profil, ganti password, toggle presisi lokasi (📍 Akurat / 🌫️ Kasar ±500m dengan penjelasan singkat), jadwal sharing otomatis (pilih hari + time-picker bergaya pill), riwayat sharing, blokir, logout.
+8. **Notifikasi in-app** — list: permintaan pertemanan, "X minta lihat lokasimu" dengan tombol cepat "Nyalakan sharing" / abaikan.
+
+### Avatar fallback
+- Jika belum upload foto: lingkaran gradient primaryGradient berisi inisial nama putih ExtraBold — tetap terlihat Dribbble-worthy tanpa file gambar.
 
 ## Aturan Interaksi
 
