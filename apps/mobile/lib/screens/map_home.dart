@@ -22,7 +22,10 @@ class MapHomeScreen extends StatefulWidget {
   State<MapHomeScreen> createState() => _MapHomeScreenState();
 }
 
-class _MapHomeScreenState extends State<MapHomeScreen> {
+class _MapHomeScreenState extends State<MapHomeScreen>
+    with SingleTickerProviderStateMixin {
+  final MapController _mapController = MapController();
+  AnimationController? _moveAnim;
   User? _me;
   List<FriendLocation> _friends = [];
   int _unread = 0;
@@ -30,8 +33,10 @@ class _MapHomeScreenState extends State<MapHomeScreen> {
   Timer? _pollTimer;
   Timer? _pushTimer;
 
+  // initialCenter hanya dibaca sekali oleh flutter_map v7; perpindahan kamera
+  // setelahnya lewat _mapController (lihat _animateTo).
   static const jakarta = LatLng(-6.2088, 106.8456);
-  LatLng _center = jakarta;
+  final LatLng _center = jakarta;
 
   @override
   void initState() {
@@ -122,7 +127,7 @@ class _MapHomeScreenState extends State<MapHomeScreen> {
   }
 
   void _focusFriend(FriendLocation f) {
-    setState(() => _center = LatLng(f.lat, f.lng));
+    _animateTo(LatLng(f.lat, f.lng));
   }
 
   void _focusMe() async {
@@ -131,10 +136,32 @@ class _MapHomeScreenState extends State<MapHomeScreen> {
       final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       if (!mounted) return;
-      setState(() => _center = LatLng(pos.latitude, pos.longitude));
+      _animateTo(LatLng(pos.latitude, pos.longitude));
     } catch (_) {
       _showSnack('Gagal mengambil posisimu');
     }
+  }
+
+  /// Animasi halus memindahkan kamera peta ke [target].
+  /// flutter_map v7 hanya membaca `initialCenter` sekali, jadi perpindahan
+  /// HARUS lewat MapController.move() (perbaikan bug FAB "my location").
+  void _animateTo(LatLng target, {double zoom = 15}) {
+    final from = _mapController.camera.center;
+    final fromZoom = _mapController.camera.zoom;
+    _moveAnim?.dispose();
+    final ctrl = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _moveAnim = ctrl;
+    ctrl.addListener(() {
+      final t = Curves.easeInOut.transform(ctrl.value);
+      _mapController.move(
+        LatLng(
+          from.latitude + (target.latitude - from.latitude) * t,
+          from.longitude + (target.longitude - from.longitude) * t,
+        ),
+        fromZoom + (zoom - fromZoom) * t,
+      );
+    });
+    ctrl.forward();
   }
 
   void _showSnack(String msg) {
@@ -206,6 +233,7 @@ class _MapHomeScreenState extends State<MapHomeScreen> {
       body: Stack(
         children: [
           FlutterMap(
+            mapController: _mapController,
             options: MapOptions(
               initialCenter: _center,
               initialZoom: 14,
@@ -394,6 +422,8 @@ class _MapHomeScreenState extends State<MapHomeScreen> {
   void dispose() {
     _pollTimer?.cancel();
     _pushTimer?.cancel();
+    _moveAnim?.dispose();
+    _mapController.dispose();
     super.dispose();
   }
 }

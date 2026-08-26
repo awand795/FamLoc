@@ -64,7 +64,7 @@ router.get('/', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT u.id, u.name, u.avatar_version, u.sharing_on,
-              ST_Y(l.geom) AS lat, ST_X(l.geom) AS lng,
+              ST_Y(l.geom::geometry) AS lat, ST_X(l.geom::geometry) AS lng,
               l.accuracy, l.heading, l.battery, l.is_mocked, l.updated_at
        FROM friendships f
        JOIN users u ON u.id = CASE WHEN f.user_id_a=$1 THEN f.user_id_b ELSE f.user_id_a END

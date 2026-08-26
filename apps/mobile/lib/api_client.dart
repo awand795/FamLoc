@@ -3,9 +3,10 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Ganti sesuai lingkungan:
+///  - HP fisik via USB + `adb reverse tcp:3000 tcp:3000`: http://127.0.0.1:3000/api/v1
 ///  - Android emulator: http://10.0.2.2:3000/api/v1
 ///  - Production (Vercel): https://`<project>`.vercel.app/api/v1
-const String kApiBase = 'http://10.0.2.2:3000/api/v1';
+const String kApiBase = 'http://127.0.0.1:3000/api/v1';
 
 class ApiException implements Exception {
   final int status;
