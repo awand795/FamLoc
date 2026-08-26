@@ -1,0 +1,24 @@
+# Environment & secrets
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+.dart_tool/
+.packages
+
+# Build artifacts
+build/
+.vercel/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Flutter
+*.iml
+.flutter-plugins
+.flutter-plugins-dependencies
