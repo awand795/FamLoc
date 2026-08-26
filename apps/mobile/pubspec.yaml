@@ -27,3 +27,16 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # Plus Jakarta Sans dibundel lokal — google_fonts tidak perlu download
+  # dari fonts.gstatic.com (penting untuk device tanpa internet).
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: assets/fonts/PlusJakartaSans-Regular.ttf
+        - asset: assets/fonts/PlusJakartaSans-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/PlusJakartaSans-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/PlusJakartaSans-ExtraBold.ttf
+          weight: 800
