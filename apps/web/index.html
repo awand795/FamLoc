@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FamLoc — Undangan Keluarga</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, 'Segoe UI', Roboto, sans-serif;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, #7C4DFF 0%, #00BFA5 100%);
+    padding: 24px;
+  }
+  .card {
+    background: #fff; border-radius: 28px; padding: 40px 32px;
+    max-width: 400px; width: 100%; text-align: center;
+    box-shadow: 0 24px 60px rgba(0,0,0,.25);
+  }
+  .logo { font-size: 56px; }
+  h1 { color: #263238; font-size: 26px; letter-spacing: -.5px; margin: 12px 0 6px; }
+  p.invite { color: #78909C; font-size: 15px; line-height: 1.5; margin-bottom: 24px; }
+  p.invite b { color: #00897B; }
+  .code {
+    display: inline-block; background: rgba(0,137,123,.08); color: #00897B;
+    font-size: 30px; font-weight: 800; letter-spacing: 5px;
+    padding: 14px 28px; border-radius: 999px; margin-bottom: 24px;
+  }
+  a.btn {
+    display: block; padding: 16px; border-radius: 999px; text-decoration: none;
+    font-weight: 700; color: #fff; font-size: 16px;
+    background: linear-gradient(180deg, #00BFA5, #00897B);
+    box-shadow: 0 10px 24px rgba(0,137,123,.35);
+  }
+  .hint { margin-top: 18px; font-size: 12px; color: #90A4AE; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">📍</div>
+    <h1>Kamu Diundang ke FamLoc!</h1>
+    <p class="invite"><b id="inviter">Keluargamu</b> mengundangmu berbagi lokasi secara privat — hanya antar keluarga yang saling setuju.</p>
+    <div class="code" id="code">FAMLOC</div>
+    <a class="btn" href="famloc://invite">Buka Aplikasi FamLoc</a>
+    <p class="hint">Belum install FamLoc? Salin kode di atas, lalu masukkan di tab "Kode" setelah aplikasi terpasang.</p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    if (params.get('code')) document.getElementById('code').textContent = params.get('code').toUpperCase();
+    if (params.get('by')) document.getElementById('inviter').textContent = decodeURIComponent(params.get('by'));
+  </script>
+</body>
+</html>
