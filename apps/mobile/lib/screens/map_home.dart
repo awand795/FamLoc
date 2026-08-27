@@ -29,6 +29,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   User? _me;
   List<FriendLocation> _friends = [];
   int _unread = 0;
+  LatLng? _myPosition; // posisi terakhir sendiri untuk marker
   bool _busy = false;
   Timer? _pollTimer;
   Timer? _pushTimer;
@@ -85,6 +86,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     try {
       LocationSettings settings = const LocationSettings(accuracy: LocationAccuracy.high);
       final pos = await Geolocator.getCurrentPosition(locationSettings: settings);
+      final meLatLng = LatLng(pos.latitude, pos.longitude);
       await ApiClient.pushLocation(
         lat: pos.latitude,
         lng: pos.longitude,
@@ -93,6 +95,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         battery: null,
         isMocked: pos.isMocked,
       );
+      if (mounted) setState(() => _myPosition = meLatLng);
     } catch (_) {} // izin lokasi ditangani lewat _ensurePermission
     finally { _busy = false; }
   }
@@ -136,7 +139,9 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       final pos = await Geolocator.getCurrentPosition(
           locationSettings: const LocationSettings(accuracy: LocationAccuracy.high));
       if (!mounted) return;
-      _animateTo(LatLng(pos.latitude, pos.longitude));
+      final meLatLng = LatLng(pos.latitude, pos.longitude);
+      setState(() => _myPosition = meLatLng);
+      _animateTo(meLatLng);
     } catch (_) {
       _showSnack('Gagal mengambil posisimu');
     }
@@ -323,6 +328,41 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
   List<Marker> _buildMarkers() {
     final list = <Marker>[];
+
+    // Marker lokasi sendiri (saat posisi diketahui)
+    if (_myPosition != null) {
+      list.add(Marker(
+        width: 120, height: 80,
+        point: _myPosition!,
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(3),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: FamColors.primary, width: 3),
+                boxShadow: FamColors.softShadow(opacity: 0.25),
+              ),
+              child: InitialAvatar(name: _me?.name ?? '?', radius: 22),
+            ),
+            const SizedBox(height: 2),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(FamRadius.pill),
+              ),
+              child: Text(_me?.name ?? '',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ));
+    }
+
+    // Marker lokasi teman
     for (final f in _friends) {
       final stale = DateTime.now().difference(f.updatedAt).inMinutes > 15;
       list.add(Marker(
