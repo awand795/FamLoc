@@ -16,7 +16,6 @@ class _Page {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
-  final _controller = PageController();
   int _page = 0;
 
   static const _pages = [
@@ -30,7 +29,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _next() {
     if (_page < _pages.length - 1) {
-      _controller.nextPage(duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      setState(() => _page++);
     } else {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const AuthScreen()),
@@ -116,17 +115,5 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-  @override
-  void initState() {
-    super.initState();
-    _controller.addListener(() {
-      setState(() => _page = _controller.page?.round() ?? 0);
-    });
-  }
 
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
 }

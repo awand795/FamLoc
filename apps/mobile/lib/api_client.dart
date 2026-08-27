@@ -168,11 +168,26 @@ class ApiClient {
       default:
         resp = await http.get(uri, headers: _headers);
     }
-    final decoded = resp.body.isEmpty ? {} : jsonDecode(resp.body);
+    if (resp.body.isEmpty) {
+      if (resp.statusCode >= 400) {
+        throw ApiException(resp.statusCode, 'Server tidak merespons (HTTP ${resp.statusCode})');
+      }
+      return {};
+    }
+    // Coba parse JSON; jika gagal (misal server return HTML 404), lempar error jelas
+    Map<String, dynamic> decoded;
+    try {
+      decoded = jsonDecode(resp.body) as Map<String, dynamic>;
+    } catch (_) {
+      throw ApiException(resp.statusCode,
+          resp.statusCode == 404
+              ? 'Endpoint tidak ditemukan — pastikan backend sudah ter-deploy'
+              : 'Respons server tidak valid (HTTP ${resp.statusCode})');
+    }
     if (resp.statusCode >= 400) {
       throw ApiException(resp.statusCode, decoded['error'] ?? 'Terjadi kesalahan');
     }
-    return (decoded as Map).cast<String, dynamic>();
+    return decoded;
   }
 
   // ---- Auth ----
