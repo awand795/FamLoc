@@ -22,3 +22,5 @@ Thumbs.db
 *.iml
 .flutter-plugins
 .flutter-plugins-dependencies
+
+.vercel
