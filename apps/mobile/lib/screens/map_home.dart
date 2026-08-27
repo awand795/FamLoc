@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../api_client.dart';
+import '../background_task.dart';
 import '../theme.dart';
 import 'add_friend_screen.dart';
 import 'family_screen.dart';
@@ -123,7 +124,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (!mounted) return;
       setState(() => _me = me2);
       _showSnack(on ? '📍 Lokasimu dibagikan' : 'Sharing dimatikan');
-      if (on) await _pushMyLocation();
+      if (on) {
+        await _pushMyLocation();
+        await startBackgroundSharing();
+      } else {
+        await stopBackgroundSharing();
+      }
     } catch (e) {
       _showSnack(e.toString());
     }
