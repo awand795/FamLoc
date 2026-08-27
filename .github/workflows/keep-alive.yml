@@ -1,0 +1,39 @@
+name: Keep Aiven Database Alive
+
+on:
+  schedule:
+    # Tiap 3 hari sekali (Aiven free tier sleep setelah ~7 hari idle)
+    - cron: '0 12 */3 * *'
+  workflow_dispatch: # Manual trigger juga
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping API health endpoint
+        run: |
+          echo "🕐 Pinging FamLoc API to keep Aiven DB alive..."
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-kohl-six-10.vercel.app/api/v1/health)
+          echo "Health check status: $STATUS"
+          if [ "$STATUS" != "200" ]; then
+            echo "⚠️ API returned non-200 status"
+            exit 1
+          fi
+          echo "✅ API is alive"
+
+      - name: Ping DB via register endpoint (dry run)
+        run: |
+          # Hit endpoint yang query database langsung
+          echo "🗄️ Pinging database through API..."
+          RESP=$(curl -s -w "\n%{http_code}" -X POST \
+            https://api-kohl-six-10.vercel.app/api/v1/auth/login \
+            -H "Content-Type: application/json" \
+            -d '{"email":"_keepalive@test.com","password":"keepalive123"}')
+          HTTP_CODE=$(echo "$RESP" | tail -1)
+          echo "Login endpoint status: $HTTP_CODE"
+          # 401 = normal (email tidak ada), tapi DB tetap di-query
+          if [ "$HTTP_CODE" = "000" ]; then
+            echo "❌ API unreachable"
+            exit 1
+          fi
+          echo "✅ Database is alive (HTTP $HTTP_CODE)"
