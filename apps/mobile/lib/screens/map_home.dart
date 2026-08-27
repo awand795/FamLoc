@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -31,6 +32,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   List<FriendLocation> _friends = [];
   int _unread = 0;
   LatLng? _myPosition; // posisi terakhir sendiri untuk marker
+  int _totalFriends = 0; // jumlah teman total (bukan hanya yang sharing)
   bool _busy = false;
   Timer? _pollTimer;
   Timer? _pushTimer;
@@ -47,8 +49,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   }
 
   Future<void> _bootstrap() async {
-    await _refreshAll();
-    await _startSharingIfOn();
+    try {
+      await _refreshAll();
+      await _startSharingIfOn();
+    } catch (e) {
+      _showSnack('Gagal memuat data: $e');
+    }
     // Polling adaptif MVP: foreground = tiap 10 detik (skill famloc-stack).
     _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _refreshLocations());
     _pushTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pushMyLocation());
@@ -78,6 +84,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (!mounted) return;
       setState(() => _friends = friends);
     } catch (_) {/* offline: biarkan data terakhir */}
+    // Ambil jumlah total teman untuk banner
+    try {
+      final allFriends = await ApiClient.friends();
+      if (!mounted) return;
+      setState(() => _totalFriends = allFriends.length);
+    } catch (_) {}
   }
 
   /// Kirim posisi ke server HANYA saat sharing ON.
@@ -88,12 +100,18 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       LocationSettings settings = const LocationSettings(accuracy: LocationAccuracy.high);
       final pos = await Geolocator.getCurrentPosition(locationSettings: settings);
       final meLatLng = LatLng(pos.latitude, pos.longitude);
+      // Ambil level baterai
+      int? batteryLevel;
+      try {
+        final level = await Battery().batteryLevel;
+        batteryLevel = level >= 0 ? level : null;
+      } catch (_) {}
       await ApiClient.pushLocation(
         lat: pos.latitude,
         lng: pos.longitude,
         accuracy: pos.accuracy,
         heading: pos.heading >= 0 ? pos.heading : null,
-        battery: null,
+        battery: batteryLevel,
         isMocked: pos.isMocked,
       );
       if (mounted) setState(() => _myPosition = meLatLng);
@@ -285,7 +303,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                       const SizedBox(width: 10),
                       Expanded(
                         child: Text(
-                          '📍 Lokasimu dibagikan ke ${_friends.length} orang · ketuk untuk matikan',
+                          '📍 Lokasimu dibagikan ke $_totalFriends orang · ketuk untuk matikan',
                           style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
                         ),
                       ),

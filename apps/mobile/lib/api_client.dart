@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -145,6 +146,8 @@ class ApiClient {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
+  static const Duration _timeout = Duration(seconds: 15);
+
   static Future<Map<String, dynamic>> _send(
     String method,
     String path,
@@ -152,21 +155,25 @@ class ApiClient {
   ) async {
     final uri = Uri.parse('$kApiBase$path');
     late http.Response resp;
-    switch (method) {
-      case 'POST':
-        resp = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {}));
-        break;
-      case 'PUT':
-        resp = await http.put(uri, headers: _headers, body: jsonEncode(body ?? {}));
-        break;
-      case 'PATCH':
-        resp = await http.patch(uri, headers: _headers, body: jsonEncode(body ?? {}));
-        break;
-      case 'DELETE':
-        resp = await http.delete(uri, headers: _headers);
-        break;
-      default:
-        resp = await http.get(uri, headers: _headers);
+    try {
+      switch (method) {
+        case 'POST':
+          resp = await http.post(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(_timeout);
+          break;
+        case 'PUT':
+          resp = await http.put(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(_timeout);
+          break;
+        case 'PATCH':
+          resp = await http.patch(uri, headers: _headers, body: jsonEncode(body ?? {})).timeout(_timeout);
+          break;
+        case 'DELETE':
+          resp = await http.delete(uri, headers: _headers).timeout(_timeout);
+          break;
+        default:
+          resp = await http.get(uri, headers: _headers).timeout(_timeout);
+      }
+    } on TimeoutException {
+      throw ApiException(408, 'Server tidak merespons — coba lagi nanti');
     }
     if (resp.body.isEmpty) {
       if (resp.statusCode >= 400) {

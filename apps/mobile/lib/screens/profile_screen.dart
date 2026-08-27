@@ -3,7 +3,9 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
 
 import '../api_client.dart';
+import '../background_task.dart';
 import '../theme.dart';
+import 'onboarding_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -217,8 +219,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   label: const Text('Keluar'),
                   onPressed: () async {
                     await ApiClient.clearToken();
+                    await stopBackgroundSharing();
                     if (!context.mounted) return;
-                    Navigator.of(context).pop();
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(builder: (_) => const OnboardingScreen()),
+                      (_) => false,
+                    );
                   },
                 ),
               ],

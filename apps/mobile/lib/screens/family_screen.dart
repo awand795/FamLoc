@@ -78,7 +78,19 @@ class _FamilyScreenState extends State<FamilyScreen> {
       body: _error != null
           ? Center(child: Padding(
               padding: const EdgeInsets.all(24),
-              child: Text(_error!, textAlign: TextAlign.center)))
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_error!, textAlign: TextAlign.center,
+                      style: const TextStyle(color: FamColors.danger)),
+                  const SizedBox(height: 16),
+                  OutlinedButton.icon(
+                    onPressed: _load,
+                    icon: const Icon(Icons.refresh_rounded),
+                    label: const Text('Coba Lagi'),
+                  ),
+                ],
+              )))
           : _friends == null
               ? const Center(child: CircularProgressIndicator())
               : RefreshIndicator(

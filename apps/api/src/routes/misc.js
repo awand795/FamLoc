@@ -171,11 +171,4 @@ router.get('/notifications', requireAuth, async (req, res) => {
   } catch (err) { console.error(err); return res.status(500).json({ error: 'Kesalahan server' }); }
 });
 
-// POST /api/v1/friend-requests/respond — alias agar kontrak tetap /friend-requests
-router.post('/friend-requests/respond', requireAuth, async (req, res) => {
-  req.url = '/respond';
-  const friendsRouter = require('./friends');
-  return friendsRouter(req, res, () => {});
-});
-
 module.exports = router;

@@ -4,7 +4,8 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-const String kApiBase = 'https://api-kohl-six-10.vercel.app/api/v1';
+import 'api_client.dart' show kApiBase;
+
 const String taskName = 'famlocPushLocation';
 
 /// Entry point untuk background isolate — wajib top-level function.

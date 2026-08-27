@@ -16,6 +16,7 @@ class _Page {
 }
 
 class _OnboardingScreenState extends State<OnboardingScreen> {
+  final _controller = PageController();
   int _page = 0;
 
   static const _pages = [
@@ -29,7 +30,10 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
 
   void _next() {
     if (_page < _pages.length - 1) {
-      setState(() => _page++);
+      _controller.nextPage(
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
     } else {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => const AuthScreen()),
@@ -56,9 +60,15 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 ),
               ),
               Expanded(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: _pages.length,
+                  onPageChanged: (i) => setState(() => _page = i),
+                  itemBuilder: (_, i) {
+                    final p = _pages[i];
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
                     Container(
                       width: 140,
                       height: 140,
@@ -85,6 +95,8 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                       style: TextStyle(fontSize: 15.5, height: 1.6, color: FamColors.muted),
                     ),
                   ],
+                    );
+                  },
                 ),
               ),
               Row(
@@ -115,5 +127,9 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
     );
   }
 
-
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 }
