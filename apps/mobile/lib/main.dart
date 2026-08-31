@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'api_client.dart';
+import 'supabase_service.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/map_home.dart';
 import 'theme.dart';
@@ -9,8 +9,8 @@ import 'theme.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  await ApiClient.loadToken();
-  final loggedIn = await ApiClient.hasToken();
+  await SupabaseService.initialize();
+  final loggedIn = SupabaseService.isLoggedIn;
   runApp(FamLocApp(initialRoute: loggedIn ? '/home' : '/'));
 }
 

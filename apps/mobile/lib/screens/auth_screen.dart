@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../api_client.dart';
+import '../supabase_service.dart';
 import '../theme.dart';
 import 'map_home.dart';
 
@@ -22,9 +22,18 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       if (_isRegister) {
-        await ApiClient.register(_name.text.trim(), _email.text.trim(), _password.text);
+        final res = await SupabaseService.signUp(
+          name: _name.text.trim(),
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+        if (res.user == null) throw Exception('Gagal membuat akun');
       } else {
-        await ApiClient.login(_email.text.trim(), _password.text);
+        final res = await SupabaseService.signIn(
+          email: _email.text.trim(),
+          password: _password.text,
+        );
+        if (res.user == null) throw Exception('Login gagal');
       }
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -32,7 +41,7 @@ class _AuthScreenState extends State<AuthScreen> {
         (_) => false,
       );
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = e.toString().replaceAll('Exception: ', '').replaceAll('AuthException(message: ', '').replaceAll(', statusCode: null)', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

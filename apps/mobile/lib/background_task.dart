@@ -1,10 +1,8 @@
-import 'dart:convert';
 import 'package:workmanager/workmanager.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'api_client.dart' show kApiBase;
+import 'supabase_service.dart';
 
 const String taskName = 'famlocPushLocation';
 
@@ -22,13 +20,10 @@ void callbackDispatcher() {
   });
 }
 
-/// Ambil lokasi dan push ke server dari background isolate.
+/// Ambil lokasi dan push ke Supabase dari background isolate.
 Future<void> _pushLocationBackground() async {
   try {
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('famloc_token');
-    if (token == null || token.isEmpty) return;
-
     final sharingOn = prefs.getBool('famloc_sharing_on') ?? false;
     if (!sharingOn) return;
 
@@ -45,24 +40,18 @@ Future<void> _pushLocationBackground() async {
       ),
     );
 
-    final uri = Uri.parse('$kApiBase/locations');
-    await http.post(
-      uri,
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
-        'lat': pos.latitude,
-        'lng': pos.longitude,
-        'accuracy': pos.accuracy,
-        'heading': pos.heading >= 0 ? pos.heading : null,
-        'battery': null,
-        'is_mocked': pos.isMocked,
-      }),
-    );
-
-    await prefs.setString('famloc_last_bg_push', DateTime.now().toIso8601String());
+    // Dapatkan token Supabase yang tersimpan di local storage
+    await SupabaseService.initialize();
+    final user = SupabaseService.currentUser;
+    if (user != null) {
+      await SupabaseService.pushLocation(
+        lat: pos.latitude,
+        lng: pos.longitude,
+        accuracy: pos.accuracy,
+        heading: pos.heading >= 0 ? pos.heading : null,
+        isMocked: pos.isMocked,
+      );
+    }
   } catch (_) {}
 }
 

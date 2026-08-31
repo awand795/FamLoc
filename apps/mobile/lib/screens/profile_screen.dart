@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../api_client.dart';
+import '../supabase_service.dart';
 import '../background_task.dart';
 import '../theme.dart';
 import 'onboarding_screen.dart';
@@ -15,24 +16,38 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  User? _me;
+  UserProfile? _me;
   final _nameCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    ApiClient.me().then((u) {
-      if (!mounted) return;
-      setState(() => _me = u);
-      _nameCtrl.text = u.name;
-    }).catchError((_) {});
+    _loadProfile();
+  }
+
+  Future<void> _loadProfile() async {
+    final profile = await SupabaseService.getMyProfile();
+    if (!mounted) return;
+    setState(() {
+      _me = profile;
+      if (profile != null) _nameCtrl.text = profile.name;
+    });
   }
 
   Future<void> _saveName() async {
-    // MVP: endpoint rename belum ada di kontrak v1 — placeholder UI.
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        behavior: SnackBarBehavior.floating,
-        content: Text('Edit nama akan segera hadir')));
+    final newName = _nameCtrl.text.trim();
+    if (newName.isEmpty) return;
+    try {
+      await SupabaseService.updateName(newName);
+      await _loadProfile();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Nama berhasil disimpan ✅')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+    }
   }
 
   Future<void> _uploadAvatar() async {
@@ -41,48 +56,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
         source: ImageSource.gallery, maxWidth: 512, imageQuality: 80);
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
-    if (bytes.length > 102400) {
+    try {
+      await SupabaseService.uploadAvatar(Uint8List.fromList(bytes));
+      await _loadProfile();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Foto terlalu besar — coba foto lain')));
-      return;
-    }
-    try {
-      await ApiClient.uploadAvatar(Uint8List.fromList(bytes));
-      final u = await ApiClient.me();
-      if (!mounted) return;
-      setState(() => _me = u);
+          behavior: SnackBarBehavior.floating,
+          content: Text('Foto profil diperbarui ✅')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-    }
-  }
-
-  Future<void> _togglePrecision(bool approx) async {
-    try {
-      await ApiClient.setPrecision(approx ? 'approx' : 'exact');
-      final u = await ApiClient.me();
-      if (!mounted) return;
-      setState(() => _me = u);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload gagal: $e')));
     }
   }
 
   Future<void> _changePasswordDialog() async {
-    final oldCtrl = TextEditingController();
     final newCtrl = TextEditingController();
     await showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Ganti Password'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: oldCtrl, obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password lama')),
-          const SizedBox(height: 10),
           TextField(controller: newCtrl, obscureText: true,
-              decoration: const InputDecoration(labelText: 'Password baru (min. 8)')),
+              decoration: const InputDecoration(labelText: 'Password baru (min. 6 karakter)')),
         ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
@@ -90,7 +85,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: FilledButton.styleFrom(backgroundColor: FamColors.primary),
             onPressed: () async {
               try {
-                await ApiClient.changePassword(oldCtrl.text, newCtrl.text);
+                if (newCtrl.text.length < 6) throw Exception('Password minimal 6 karakter');
+                await SupabaseService.client.auth.updateUser(
+                  UserAttributes(password: newCtrl.text),
+                );
                 if (!ctx.mounted || !mounted) return;
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -98,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     content: Text('Password berhasil diganti ✅')));
               } catch (e) {
                 ScaffoldMessenger.of(ctx)
-                    .showSnackBar(SnackBar(content: Text(e.toString())));
+                    .showSnackBar(SnackBar(content: Text(e.toString().replaceAll('Exception: ', ''))));
               }
             },
             child: const Text('Simpan'),
@@ -111,7 +109,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('⚙️ Profil & Privasi')),
+      appBar: AppBar(title: const Text('⚙️ Profil & Pengaturan')),
       body: _me == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -157,34 +155,44 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
                           decoration: BoxDecoration(color: Colors.white24,
                               borderRadius: BorderRadius.circular(FamRadius.pill)),
-                          child: Text('Kode: ${_me!.inviteCode}',
-                              style: const TextStyle(color: Colors.white, fontSize: 12, letterSpacing: 1.5)),
+                          child: const Text('Keluarga',
+                              style: TextStyle(color: Colors.white, fontSize: 12, letterSpacing: 1.2)),
                         ),
                       ])),
                     ],
                   ),
                 ),
                 const SizedBox(height: 20),
-                _SectionCard(title: '🔒 Privasi', children: [
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    activeThumbColor: FamColors.primary,
-                    title: const Text('Mode lokasi kasar'),
-                    subtitle: const Text(
-                        'Keluarga hanya melihat perkiraan ±500m. Posisi akuratmu tetap tersimpan aman.',
-                        style: TextStyle(fontSize: 12.5)),
-                    value: _me!.locationPrecision == 'approx',
-                    onChanged: (v) => _togglePrecision(v),
-                  ),
-                ]),
-                const SizedBox(height: 14),
                 _SectionCard(title: '👤 Akun', children: [
                   ListTile(
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.edit_rounded),
-                    title: const Text('Ubah nama'),
+                    title: const Text('Ubah nama panggilan'),
+                    subtitle: Text(_me!.name),
                     trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: _saveName,
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Ubah Nama'),
+                          content: TextField(
+                            controller: _nameCtrl,
+                            decoration: const InputDecoration(labelText: 'Nama baru'),
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: FamColors.primary),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _saveName();
+                              },
+                              child: const Text('Simpan'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                   ListTile(
                     contentPadding: EdgeInsets.zero,
@@ -193,20 +201,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: _changePasswordDialog,
                   ),
-                  const ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.description_rounded),
-                    title: Text('Kebijakan privasi'),
-                    subtitle: Text('famloc.vercel.app/privacy', style: TextStyle(fontSize: 12)),
-                  ),
                 ]),
                 const SizedBox(height: 14),
                 _SectionCard(title: 'ℹ️ Tentang', children: [
                   const Padding(
                     padding: EdgeInsets.only(top: 4),
                     child: Text(
-                      'FamLoc v0.1 — Lokasi HANYA dibagikan ke teman mutual. '
-                      'Peta © OpenStreetMap contributors.',
+                      'FamLoc — Aplikasi pelacak lokasi privat keluarga.\n'
+                      'Peta © OpenStreetMap contributors.\n'
+                      'Didukung oleh Supabase Realtime.',
                       style: TextStyle(fontSize: 12.5, color: FamColors.muted, height: 1.5),
                     ),
                   ),
@@ -218,7 +221,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: const Icon(Icons.logout_rounded),
                   label: const Text('Keluar'),
                   onPressed: () async {
-                    await ApiClient.clearToken();
+                    await SupabaseService.signOut();
                     await stopBackgroundSharing();
                     if (!context.mounted) return;
                     Navigator.of(context).pushAndRemoveUntil(
