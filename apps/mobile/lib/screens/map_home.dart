@@ -44,10 +44,20 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   }
 
   Future<void> _bootstrap() async {
-    await _refreshProfile();
-    await _focusMe();
-    await _refreshLocations();
-    await _startSharingIfOn();
+    // 1. Ambil posisi terakhir dari cache hardware HP (0 milidetik - instan tanpa loading)
+    try {
+      final lastPos = await Geolocator.getLastKnownPosition();
+      if (lastPos != null && mounted) {
+        final lastLatLng = LatLng(lastPos.latitude, lastPos.longitude);
+        setState(() => _myPosition = lastLatLng);
+        _mapController.move(lastLatLng, 15);
+      }
+    } catch (_) {}
+
+    // 2. Jalankan refresh profile & lokasi secara paralel di latar belakang
+    _refreshProfile().then((_) => _startSharingIfOn());
+    _refreshLocations();
+    _focusMe(); // Update dengan GPS akurat saat satelit siap
 
     // Dengarkan perubahan realtime dari Supabase PostgreSQL Realtime
     _realtimeSubscription = SupabaseService.streamLocations().listen((_) {
@@ -285,8 +295,16 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                subdomains: const ['a', 'b', 'c', 'd'],
                 userAgentPackageName: 'eu.awanda.famloc',
+                maxZoom: 19,
+                tileBuilder: (context, tileWidget, tile) {
+                  return Container(
+                    color: const Color(0xFFE8ECEF),
+                    child: tileWidget,
+                  );
+                },
               ),
               MarkerLayer(markers: _buildMarkers()),
             ],
