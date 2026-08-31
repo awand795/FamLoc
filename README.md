@@ -77,7 +77,7 @@ FamLocation/
 ## 🚀 Panduan Memulai (Local Development)
 
 ### 1. Prasyarat
-- **Node.js**: v20 atau lebih baru
+- **Node.js**: v22 (Active LTS) atau lebih baru
 - **Flutter SDK**: v3.5 atau lebih baru
 - **PostgreSQL**: Dengan ekstensi PostGIS aktif (misal Aiven / PostgreSQL lokal)
 
