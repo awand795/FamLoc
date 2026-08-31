@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
@@ -25,6 +26,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
   StreamSubscription? _realtimeSubscription;
+  StreamSubscription<Position>? _positionStreamSub;
   AnimationController? _moveAnim;
   UserProfile? _me;
   List<FamilyMemberLocation> _family = [];
@@ -66,8 +68,61 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
   Future<void> _startSharingIfOn() async {
     try {
-      if (_me?.sharingOn == true) await _pushMyLocation();
+      if (_me?.sharingOn == true) {
+        _startLocationStream();
+        await _pushMyLocation();
+      }
     } catch (_) {}
+  }
+
+  void _startLocationStream() {
+    _stopLocationStream();
+    if (_me?.sharingOn != true) return;
+
+    late LocationSettings locationSettings;
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      locationSettings = AndroidSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+        forceLocationManager: false,
+        intervalDuration: const Duration(seconds: 5),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationText: "FamLoc sedang aktif membagikan lokasi ke keluargamu.",
+          notificationTitle: "📍 Berbagi Lokasi Aktif",
+          enableWakeLock: true,
+        ),
+      );
+    } else {
+      locationSettings = const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      );
+    }
+
+    _positionStreamSub = Geolocator.getPositionStream(locationSettings: locationSettings).listen((pos) async {
+      final meLatLng = LatLng(pos.latitude, pos.longitude);
+      int? batteryLevel;
+      try {
+        final level = await Battery().batteryLevel;
+        batteryLevel = level >= 0 ? level : null;
+      } catch (_) {}
+
+      await SupabaseService.pushLocation(
+        lat: pos.latitude,
+        lng: pos.longitude,
+        accuracy: pos.accuracy,
+        heading: pos.heading >= 0 ? pos.heading : null,
+        battery: batteryLevel,
+        isMocked: pos.isMocked,
+      );
+
+      if (mounted) setState(() => _myPosition = meLatLng);
+    });
+  }
+
+  void _stopLocationStream() {
+    _positionStreamSub?.cancel();
+    _positionStreamSub = null;
   }
 
   Future<void> _refreshLocations() async {
@@ -136,9 +191,11 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       await _refreshProfile();
       _showSnack(on ? '📍 Lokasimu dibagikan ke keluarga' : 'Berbagi lokasi dimatikan');
       if (on) {
+        _startLocationStream();
         await _pushMyLocation();
         await startBackgroundSharing();
       } else {
+        _stopLocationStream();
         await stopBackgroundSharing();
       }
     } catch (e) {
@@ -423,6 +480,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
   @override
   void dispose() {
+    _stopLocationStream();
     _realtimeSubscription?.cancel();
     _pushTimer?.cancel();
     _moveAnim?.dispose();
