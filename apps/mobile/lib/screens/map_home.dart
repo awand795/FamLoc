@@ -121,6 +121,17 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       return;
     }
     try {
+      if (_me != null) {
+        setState(() {
+          _me = UserProfile(
+            id: _me!.id,
+            name: _me!.name,
+            email: _me!.email,
+            avatarUrl: _me!.avatarUrl,
+            sharingOn: on,
+          );
+        });
+      }
       await SupabaseService.updateSharing(on);
       await _refreshProfile();
       _showSnack(on ? '📍 Lokasimu dibagikan ke keluarga' : 'Berbagi lokasi dimatikan');

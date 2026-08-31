@@ -122,13 +122,35 @@ class SupabaseService {
   static Future<UserProfile?> getMyProfile() async {
     final user = currentUser;
     if (user == null) return null;
-    final res = await client
-        .from('profiles')
-        .select()
-        .eq('id', user.id)
-        .maybeSingle();
-    if (res == null) return null;
-    return UserProfile.fromMap(res);
+    try {
+      var res = await client
+          .from('profiles')
+          .select()
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (res == null) {
+        final name = user.userMetadata?['name'] ?? user.email?.split('@').first ?? 'Saya';
+        await client.from('profiles').upsert({
+          'id': user.id,
+          'name': name,
+          'email': user.email ?? '',
+          'sharing_on': true,
+        });
+        res = await client.from('profiles').select().eq('id', user.id).maybeSingle();
+      }
+
+      if (res != null) {
+        return UserProfile.fromMap(res);
+      }
+    } catch (_) {}
+
+    return UserProfile(
+      id: user.id,
+      name: user.userMetadata?['name'] ?? user.email?.split('@').first ?? 'Saya',
+      email: user.email ?? '',
+      sharingOn: true,
+    );
   }
 
   static Future<void> updateSharing(bool on) async {
