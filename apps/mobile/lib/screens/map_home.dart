@@ -31,6 +31,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   UserProfile? _me;
   List<FamilyMemberLocation> _family = [];
   LatLng? _myPosition;
+  int? _myBattery;
+  String? _followingUserId;
   bool _busy = false;
   Timer? _pushTimer;
 
@@ -44,7 +46,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   }
 
   Future<void> _bootstrap() async {
-    // 1. Ambil posisi terakhir dari cache hardware HP (0 milidetik - instan tanpa loading)
+    // 1. Ambil posisi terakhir dari cache hardware HP (0 milidetik - instan)
     try {
       final lastPos = await Geolocator.getLastKnownPosition();
       if (lastPos != null && mounted) {
@@ -126,7 +128,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         isMocked: pos.isMocked,
       );
 
-      if (mounted) setState(() => _myPosition = meLatLng);
+      if (mounted) {
+        setState(() {
+          _myPosition = meLatLng;
+          _myBattery = batteryLevel;
+        });
+      }
     });
   }
 
@@ -140,6 +147,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       final list = await SupabaseService.getFamilyLocations();
       if (!mounted) return;
       setState(() => _family = list);
+
+      // Jika sedang dalam mode Auto-Follow seseorang, kamera otomatis mengikuti posisi barunya
+      if (_followingUserId != null) {
+        final followed = _family.where((f) => f.userId == _followingUserId).firstOrNull;
+        if (followed != null) {
+          _animateTo(LatLng(followed.lat, followed.lng), zoom: 16);
+        }
+      }
     } catch (_) {}
   }
 
@@ -167,7 +182,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         isMocked: pos.isMocked,
       );
 
-      if (mounted) setState(() => _myPosition = meLatLng);
+      if (mounted) {
+        setState(() {
+          _myPosition = meLatLng;
+          _myBattery = batteryLevel;
+        });
+      }
     } catch (_) {}
     finally { _busy = false; }
   }
@@ -214,10 +234,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   }
 
   void _focusMember(FamilyMemberLocation f) {
-    _animateTo(LatLng(f.lat, f.lng));
+    setState(() => _followingUserId = f.userId);
+    _animateTo(LatLng(f.lat, f.lng), zoom: 16);
+    _showSnack('🎥 Kamera mengikuti ${f.name} secara langsung');
   }
 
   Future<void> _focusMe() async {
+    setState(() => _followingUserId = null);
     if (!await _ensurePermission()) return;
     try {
       final pos = await Geolocator.getCurrentPosition(
@@ -257,6 +280,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
   @override
   Widget build(BuildContext context) {
+    final followedMember = _followingUserId != null
+        ? _family.where((f) => f.userId == _followingUserId).firstOrNull
+        : null;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -292,6 +319,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               initialCenter: _center,
               initialZoom: 14,
               interactionOptions: const InteractionOptions(flags: InteractiveFlag.all),
+              onPositionChanged: (pos, hasGesture) {
+                // Jika pengguna menggeser peta secara manual, lepas mode auto-follow
+                if (hasGesture && _followingUserId != null) {
+                  setState(() => _followingUserId = null);
+                }
+              },
             ),
             children: [
               TileLayer(
@@ -314,7 +347,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             child: Text(kOsmAttribution,
                 style: TextStyle(fontSize: 10, color: FamColors.muted)),
           ),
-          // Banner Status Berbagi
+          // Banner Status Berbagi Lokasi Sendiri
           if (_me?.sharingOn == true)
             Positioned(
               top: kToolbarHeight + MediaQuery.of(context).padding.top + 8,
@@ -324,7 +357,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.90),
+                    color: Colors.white.withValues(alpha: 0.92),
                     borderRadius: BorderRadius.circular(FamRadius.pill),
                     boxShadow: FamColors.softShadow(opacity: 0.15),
                   ),
@@ -364,6 +397,44 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                 ),
               ),
             ),
+
+          // Floating Pill saat Mode Auto-Follow Aktif
+          if (followedMember != null)
+            Positioned(
+              bottom: 24,
+              left: 20,
+              right: 20,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(FamRadius.pill),
+                    boxShadow: FamColors.softShadow(opacity: 0.3),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.videocam_rounded, color: Colors.greenAccent, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Mengikuti ${followedMember.name}',
+                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(width: 12),
+                      GestureDetector(
+                        onTap: () => setState(() => _followingUserId = null),
+                        child: Container(
+                          padding: const EdgeInsets.all(3),
+                          decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
+                          child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
       floatingActionButton: Column(
@@ -374,6 +445,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               heroTag: 'focus_family',
               backgroundColor: FamColors.primary,
               foregroundColor: Colors.white,
+              tooltip: 'Fokus ke Keluarga',
               onPressed: () => _focusMember(_family.first),
               child: const Icon(Icons.people_alt_rounded),
             ),
@@ -383,6 +455,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             heroTag: 'focus_me',
             backgroundColor: Colors.white,
             foregroundColor: FamColors.primary,
+            tooltip: 'Posisiku',
             onPressed: _focusMe,
             child: const Icon(Icons.my_location_rounded),
           ),
@@ -397,7 +470,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     // Marker Lokasi Sendiri
     if (_myPosition != null) {
       list.add(Marker(
-        width: 120, height: 80,
+        width: 130, height: 85,
         point: _myPosition!,
         child: Column(
           children: [
@@ -418,26 +491,50 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             ),
             const SizedBox(height: 2),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.92),
+                color: Colors.white.withValues(alpha: 0.94),
                 borderRadius: BorderRadius.circular(FamRadius.pill),
+                boxShadow: FamColors.softShadow(opacity: 0.1),
               ),
-              child: Text(_me?.name ?? 'Saya',
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(_me?.name ?? 'Saya',
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  if (_myBattery != null) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      _myBattery! <= 20
+                          ? Icons.battery_alert_rounded
+                          : (_myBattery! <= 50 ? Icons.battery_3_bar_rounded : Icons.battery_full_rounded),
+                      size: 13,
+                      color: _myBattery! <= 20 ? Colors.red : (_myBattery! <= 50 ? Colors.orange : Colors.green),
+                    ),
+                    Text(
+                      '$_myBattery%',
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: _myBattery! <= 20 ? Colors.red : (_myBattery! <= 50 ? Colors.orange : Colors.green.shade800),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ],
         ),
       ));
     }
 
-    // Marker Anggota Keluarga (Mama / Pengguna lain)
+    // Marker Anggota Keluarga (Mama / Teman)
     for (final f in _family) {
       final isLive = DateTime.now().difference(f.updatedAt).inMinutes <= 15;
       list.add(Marker(
-        width: 120,
-        height: 80,
+        width: 140,
+        height: 85,
         point: LatLng(f.lat, f.lng),
         child: GestureDetector(
           onTap: () => _showFamilySheet(f),
@@ -463,14 +560,38 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               ),
               const SizedBox(height: 2),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: Colors.white.withValues(alpha: 0.94),
                   borderRadius: BorderRadius.circular(FamRadius.pill),
+                  boxShadow: FamColors.softShadow(opacity: 0.1),
                 ),
-                child: Text(f.name,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(f.name,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    if (f.battery != null) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        f.battery! <= 20
+                            ? Icons.battery_alert_rounded
+                            : (f.battery! <= 50 ? Icons.battery_3_bar_rounded : Icons.battery_full_rounded),
+                        size: 13,
+                        color: f.battery! <= 20 ? Colors.red : (f.battery! <= 50 ? Colors.orange : Colors.green),
+                      ),
+                      Text(
+                        '${f.battery}%',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: f.battery! <= 20 ? Colors.red : (f.battery! <= 50 ? Colors.orange : Colors.green.shade800),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
               ),
             ],
           ),
@@ -661,7 +782,7 @@ class _FamilyDetailSheet extends StatelessWidget {
           const SizedBox(height: 20),
 
           GradientButton(
-            label: '📍 Fokus ke ${member.name}',
+            label: '📍 Fokus & Ikuti ${member.name}',
             onPressed: () {
               Navigator.pop(context);
               onFocus();
