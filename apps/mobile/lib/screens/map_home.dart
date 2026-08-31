@@ -328,8 +328,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                subdomains: const ['a', 'b', 'c', 'd'],
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'eu.awanda.famloc',
                 maxZoom: 19,
                 tileBuilder: (context, tileWidget, tile) {
