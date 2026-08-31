@@ -1,0 +1,27 @@
+name: Supabase Keep-Alive
+
+on:
+  schedule:
+    # Berjalan setiap 3 hari sekali pada pukul 07:00 UTC
+    - cron: '0 7 */3 * *'
+  workflow_dispatch: # Memungkinkan trigger manual dari tab Actions di GitHub
+
+jobs:
+  ping:
+    name: Ping Supabase REST API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase Database
+        run: |
+          echo "Pinging Supabase project wcqxtwdbgxmcojllntuh to prevent auto-pause..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "apikey: sb_publishable_OzRbMlLljxLOWWZ3qVpk0A_Nef52nid" \
+            -H "Authorization: Bearer sb_publishable_OzRbMlLljxLOWWZ3qVpk0A_Nef52nid" \
+            "https://wcqxtwdbgxmcojllntuh.supabase.co/rest/v1/profiles?select=id&limit=1")
+          
+          echo "Response HTTP Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "✅ Supabase project is active and healthy!"
+          else
+            echo "⚠️ Ping received status: $HTTP_STATUS"
+          fi

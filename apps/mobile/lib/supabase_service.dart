@@ -3,8 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const String kSupabaseUrl = 'https://wcqxtwdbgxmcojllntuh.supabase.co';
-const String kSupabaseAnonKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndjcXh0d2RiZ3htY29qbGxudHVoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNTU3NDQsImV4cCI6MjEwMzczMTc0NH0.lAUGMKhsXBOc0ItvhxnPVm8RW_Pc21VoiG6FCIRTHPI';
+const String kSupabasePublishableKey = 'sb_publishable_OzRbMlLljxLOWWZ3qVpk0A_Nef52nid';
 
 class UserProfile {
   final String id;
@@ -83,7 +82,7 @@ class SupabaseService {
   static Future<void> initialize() async {
     await Supabase.initialize(
       url: kSupabaseUrl,
-      publishableKey: kSupabaseAnonKey,
+      publishableKey: kSupabasePublishableKey,
       realtimeClientOptions: const RealtimeClientOptions(
         eventsPerSecond: 10,
       ),
@@ -158,6 +157,75 @@ class SupabaseService {
     return publicUrl;
   }
 
+  // ---- Friends / Family Management ----
+  static Future<List<UserProfile>> getFriends() async {
+    final user = currentUser;
+    if (user == null) return [];
+
+    final res = await client
+        .from('friendships')
+        .select('user_id_a, user_id_b')
+        .or('user_id_a.eq.${user.id},user_id_b.eq.${user.id}');
+
+    final friendIds = <String>[];
+    for (final row in (res as List)) {
+      final a = row['user_id_a'] as String;
+      final b = row['user_id_b'] as String;
+      friendIds.add(a == user.id ? b : a);
+    }
+
+    if (friendIds.isEmpty) return [];
+
+    final profilesRes = await client
+        .from('profiles')
+        .select()
+        .filter('id', 'in', friendIds);
+
+    return (profilesRes as List).map((p) => UserProfile.fromMap(p)).toList();
+  }
+
+  static Future<void> addFriendByEmail(String email) async {
+    final user = currentUser;
+    if (user == null) throw Exception('Silakan login terlebih dahulu');
+
+    final cleanEmail = email.trim().toLowerCase();
+    if (cleanEmail == (user.email ?? '').toLowerCase()) {
+      throw Exception('Tidak bisa menambahkan diri sendiri');
+    }
+
+    final targetProfile = await client
+        .from('profiles')
+        .select()
+        .ilike('email', cleanEmail)
+        .maybeSingle();
+
+    if (targetProfile == null) {
+      throw Exception('Pengguna dengan email $cleanEmail belum terdaftar');
+    }
+
+    final targetId = targetProfile['id'] as String;
+    final idA = user.id.compareTo(targetId) < 0 ? user.id : targetId;
+    final idB = user.id.compareTo(targetId) < 0 ? targetId : user.id;
+
+    await client.from('friendships').upsert({
+      'user_id_a': idA,
+      'user_id_b': idB,
+    });
+  }
+
+  static Future<void> removeFriend(String friendId) async {
+    final user = currentUser;
+    if (user == null) return;
+
+    final idA = user.id.compareTo(friendId) < 0 ? user.id : friendId;
+    final idB = user.id.compareTo(friendId) < 0 ? friendId : user.id;
+
+    await client
+        .from('friendships')
+        .delete()
+        .match({'user_id_a': idA, 'user_id_b': idB});
+  }
+
   // ---- Location Operations ----
   static Future<void> pushLocation({
     required double lat,
@@ -184,6 +252,13 @@ class SupabaseService {
 
   static Future<List<FamilyMemberLocation>> getFamilyLocations() async {
     final myId = currentUser?.id;
+    if (myId == null) return [];
+
+    // Ambil daftar teman yang terhubung
+    final friends = await getFriends();
+    final friendIds = friends.map((f) => f.id).toList();
+
+    // Query lokasi
     final res = await client
         .from('user_locations')
         .select('*, profiles(name, avatar_url, sharing_on)');
@@ -192,9 +267,13 @@ class SupabaseService {
     for (final row in (res as List)) {
       final profile = row['profiles'] as Map<String, dynamic>?;
       final sharingOn = profile?['sharing_on'] ?? true;
-      // Jangan tampilkan jika sharing dimatikan atau jika itu diri sendiri
-      if (sharingOn && row['user_id'] != myId) {
-        list.add(FamilyMemberLocation.fromMap(row));
+      final rowUserId = row['user_id'];
+
+      // Tampilkan jika sharing aktif, bukan diri sendiri, dan (jika ada teman terdaftar) masuk dalam daftar teman
+      if (sharingOn && rowUserId != myId) {
+        if (friendIds.isEmpty || friendIds.contains(rowUserId)) {
+          list.add(FamilyMemberLocation.fromMap(row));
+        }
       }
     }
     return list;

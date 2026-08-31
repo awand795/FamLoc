@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 import '../supabase_service.dart';
 import '../background_task.dart';
 import '../theme.dart';
+import 'family_screen.dart';
 import 'profile_screen.dart';
 
 /// Atribusi wajib tile OpenStreetMap — JANGAN dihapus.
@@ -184,7 +185,18 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         title: Text('Halo, ${_me?.name ?? ''} 👋'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.people_alt_rounded),
+            tooltip: 'Keluargaku & Teman',
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FamilyScreen()),
+              );
+              _refreshLocations();
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.settings_rounded),
+            tooltip: 'Profil & Pengaturan',
             onPressed: () async {
               await Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ProfileScreen()),
