@@ -1,39 +1,29 @@
-name: Keep Aiven Database Alive
+name: Keep Backend Alive
 
 on:
   schedule:
-    # Tiap 3 hari sekali (Aiven free tier sleep setelah ~7 hari idle)
-    - cron: '0 12 */3 * *'
-  workflow_dispatch: # Manual trigger juga
+    # Jalankan setiap 10 menit (Render sleep setelah 15 menit idle)
+    - cron: '*/10 * * * *'
+  workflow_dispatch: # Memungkinkan trigger manual dari tab Actions di GitHub
 
 jobs:
   ping:
+    name: Ping Render Backend
     runs-on: ubuntu-latest
     steps:
-      - name: Ping API health endpoint
+      - name: Ping Health Endpoint
+        env:
+          # Atur secret RENDER_BACKEND_URL di Settings > Secrets > Actions
+          # atau gunakan fallback URL default jika belum diatur
+          BACKEND_URL: ${{ secrets.RENDER_BACKEND_URL || 'https://famloc-api.onrender.com' }}
         run: |
-          echo "🕐 Pinging FamLoc API to keep Aiven DB alive..."
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://api-kohl-six-10.vercel.app/api/v1/health)
-          echo "Health check status: $STATUS"
-          if [ "$STATUS" != "200" ]; then
-            echo "⚠️ API returned non-200 status"
-            exit 1
+          echo "Pinging ${BACKEND_URL}/api/v1/health ..."
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 "${BACKEND_URL}/api/v1/health")
+          echo "Response HTTP Status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -ge 200 ] && [ "$HTTP_STATUS" -lt 400 ]; then
+            echo "Backend is awake and healthy! (Status: $HTTP_STATUS)"
+          else
+            echo "Backend returned status $HTTP_STATUS or failed to respond in time."
+            # Tetap exit 0 agar cron tidak dianggap failing run saat cold start
+            exit 0
           fi
-          echo "✅ API is alive"
-
-      - name: Ping DB via register endpoint (dry run)
-        run: |
-          # Hit endpoint yang query database langsung
-          echo "🗄️ Pinging database through API..."
-          RESP=$(curl -s -w "\n%{http_code}" -X POST \
-            https://api-kohl-six-10.vercel.app/api/v1/auth/login \
-            -H "Content-Type: application/json" \
-            -d '{"email":"_keepalive@test.com","password":"keepalive123"}')
-          HTTP_CODE=$(echo "$RESP" | tail -1)
-          echo "Login endpoint status: $HTTP_CODE"
-          # 401 = normal (email tidak ada), tapi DB tetap di-query
-          if [ "$HTTP_CODE" = "000" ]; then
-            echo "❌ API unreachable"
-            exit 1
-          fi
-          echo "✅ Database is alive (HTTP $HTTP_CODE)"

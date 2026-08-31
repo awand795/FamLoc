@@ -117,6 +117,47 @@ class FamNotification {
         name: j['name'], avatarVersion: ((j['avatar_version'] ?? 0) as num).toInt(),
         createdAt: DateTime.parse(j['created_at']),
       );
+
+  String? get avatarUrl =>
+      avatarVersion > 0 ? '$kApiBase/users/$userId/avatar?v=$avatarVersion' : null;
+}
+
+class FriendRequestItem {
+  final String id;
+  final String userId;
+  final String name;
+  final int avatarVersion;
+  final DateTime createdAt;
+  final bool isIncoming;
+
+  FriendRequestItem({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.avatarVersion,
+    required this.createdAt,
+    required this.isIncoming,
+  });
+
+  factory FriendRequestItem.fromJson(Map<String, dynamic> j, {required bool isIncoming}) =>
+      FriendRequestItem(
+        id: j['id'],
+        userId: j['user_id'] ?? '',
+        name: j['name'] ?? '',
+        avatarVersion: ((j['avatar_version'] ?? 0) as num).toInt(),
+        createdAt: DateTime.parse(j['created_at']),
+        isIncoming: isIncoming,
+      );
+
+  String? get avatarUrl =>
+      avatarVersion > 0 ? '$kApiBase/users/$userId/avatar?v=$avatarVersion' : null;
+}
+
+class FriendRequestsResult {
+  final List<FriendRequestItem> incoming;
+  final List<FriendRequestItem> outgoing;
+
+  FriendRequestsResult({required this.incoming, required this.outgoing});
 }
 
 class ApiClient {
@@ -126,6 +167,8 @@ class ApiClient {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString('famloc_token');
   }
+
+  static String? get token => _token;
 
   static Future<bool> hasToken() async => _token != null && _token!.isNotEmpty;
 
@@ -253,6 +296,20 @@ class ApiClient {
     return (r['notifications'] as List).map((e) => FamNotification.fromJson(e)).toList();
   }
 
+  static Future<FriendRequestsResult> friendRequests() async {
+    final r = await _send('GET', '/friend-requests', null);
+    final inList = ((r['incoming'] ?? []) as List)
+        .map((e) => FriendRequestItem.fromJson(e, isIncoming: true))
+        .toList();
+    final outList = ((r['outgoing'] ?? []) as List)
+        .map((e) => FriendRequestItem.fromJson(e, isIncoming: false))
+        .toList();
+    return FriendRequestsResult(incoming: inList, outgoing: outList);
+  }
+
+  static Future<void> cancelFriendRequest(String requestId) =>
+      _send('DELETE', '/friend-requests/$requestId', null);
+
   static Future<void> respondFriendRequest(String requestId, String action) =>
       _send('POST', '/friend-requests/respond', {'request_id': requestId, 'action': action});
 
@@ -261,6 +318,15 @@ class ApiClient {
 
   static Future<void> requestLocation(String friendId) =>
       _send('POST', '/friends/$friendId/location-request', {});
+
+  static Future<String?> reverseGeocode(double lat, double lng) async {
+    try {
+      final r = await _send('GET', '/reverse-geocode?lat=$lat&lng=$lng', null);
+      return r['address'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
 
   // ---- Locations ----
   static Future<void> pushLocation({

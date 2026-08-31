@@ -10,27 +10,27 @@ description: Tech stack dan arsitektur aplikasi FamLoc (live location antar tema
 | Komponen | Pilihan | Catatan |
 |---|---|---|
 | Mobile app | **Flutter (Dart)** | Satu codebase Android + iOS |
-| Backend | **Node.js + Express** | Dijalankan sebagai serverless functions |
-| Hosting backend | **Vercel** (free tier) | Serverless — TIDAK support WebSocket/long-running process |
+| Backend | **Node.js + Express + WebSocket (`ws`)** | Dijalankan sebagai persistent web service di Render |
+| Hosting backend | **Render** (free tier Web Service) | Support long-running process & native WebSocket (`wss://`) |
+| Keep-Alive | **GitHub Actions Cron (setiap 10 mnt)** | Ping `/api/v1/health` agar service Render tidak spin down / sleep |
 | Database | **Aiven PostgreSQL + ekstensi PostGIS** | Sudah dimiliki user; koneksi via connection string env var |
-| Realtime MVP | **Polling adaptif** | Foreground/map aktif = tiap 10 dtk; background = 30–60 dtk. TANPA WebSocket di MVP |
+| Realtime | **WebSocket duplex stream + REST fallback** | Stream delta pergerakan via WS; REST untuk initial snapshot & background |
 | Notifikasi MVP | **In-app saja** (badge/list) | Push notification (FCM/APNs) = fase 2 — jangan setup FCM di MVP |
 | Avatar | **Aiven Postgres** (`user_avatars.bytea`) | Client resize ≤256px JPEG <100KB sebelum upload; serve via API + Cache-Control; tanpa storage pihak ketiga |
 | Reverse geocoding | **Nominatim OSM** + tabel `geocode_cache` | Maks 1 req/dtk; bulatkan koordinat ~4 desimal sebagai cache key |
-| Link undangan | Landing page statis di Vercel | Tampilkan nama pengundang + `invite_code` + tombol buka app; TANPA deep link native di MVP |
-| Sesi | **Multi-device diperbolehkan** | JWT sampai expired; tidak ada invalidasi lintas perangkat di MVP |
+| Link undangan | Landing page statis di Vercel / Render | Tampilkan nama pengundang + `invite_code` + tombol buka app |
+| Sesi | **Multi-device diperbolehkan** | JWT sampai expired; multiple WebSocket connections per user didukung |
 | Crash reporting | **Sentry free tier** | Pasang SDK sentry_flutter saat scaffold mobile |
 | Auth | **Email + password** (bcrypt hash di server, token JWT). Tanpa OTP/sms tanpa layanan email di MVP — biaya Rp0. Verifikasi email = fase 2. **KEPUTUSAN USER: email transaksional dikirim via SMTP Gmail pribadi** (nodemailer). Simpan kredensial di env var (`SMTP_USER`, `SMTP_PASS`), JANGAN commit |
 | Map SDK | **flutter_map + tile OpenStreetMap** | Gratis, tanpa API key. WAJIB sertakan atribusi © OpenStreetMap contributors. Jangan tambah google_maps_flutter/mapbox di MVP |
 
 ## Aturan Arsitektur
 
-1. **Flutter TIDAK PERNAH akses database langsung.** Semua lewat REST API Express.
-2. **Tidak ada WebSocket di MVP.** Jangan tambahkan `ws`/`socket.io`. Realtime = Flutter poll `GET /api/v1/friends/locations`.
-3. **Serverless-safe code**: jangan simpan state in-memory antar request (tiap function invocation bisa beda container). Semua state di Postgres.
-4. **Koneksi DB**: pakai pool dengan limit kecil (mis. `max: 5`) karena Vercel membuka banyak instance; pertimbangkan pooling (PgBouncer/Aiven pooled connection string).
-5. **Keamanan lokasi**: endpoint lokasi WAJIB verifikasi pertemanan mutual sebelum mengembalikan data. Unfriend/block = langsung hilang akses.
-6. **Semua komunikasi HTTPS** (default di Vercel).
+1. **Flutter TIDAK PERNAH akses database langsung.** Semua lewat REST API / WebSocket backend.
+2. **Realtime WebSocket**: koneksi WSS (`/ws?token=<JWT>`) menangani live tracking delta pergerakan & broadcast ke mutual friends secara instan.
+3. **Koneksi DB**: gunakan pg connection pool ke Aiven Postgres.
+4. **Keamanan lokasi**: endpoint/event lokasi WAJIB verifikasi pertemanan mutual sebelum mengembalikan/menyiarkan data. Mode approx (±500m) diterapkan di server sebelum broadcast ke teman.
+5. **Semua komunikasi HTTPS & WSS** (disediakan otomatis oleh Render).
 
 ## Kontrak API (v1)
 

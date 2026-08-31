@@ -8,6 +8,7 @@ import 'package:latlong2/latlong.dart';
 
 import '../api_client.dart';
 import '../background_task.dart';
+import '../realtime_service.dart';
 import '../theme.dart';
 import 'add_friend_screen.dart';
 import 'family_screen.dart';
@@ -27,6 +28,8 @@ class MapHomeScreen extends StatefulWidget {
 class _MapHomeScreenState extends State<MapHomeScreen>
     with SingleTickerProviderStateMixin {
   final MapController _mapController = MapController();
+  final RealtimeService _realtime = RealtimeService();
+  StreamSubscription<FriendLocation>? _wsSubscription;
   AnimationController? _moveAnim;
   User? _me;
   List<FriendLocation> _friends = [];
@@ -55,9 +58,25 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     } catch (e) {
       _showSnack('Gagal memuat data: $e');
     }
-    // Polling adaptif MVP: foreground = tiap 10 detik (skill famloc-stack).
-    _pollTimer = Timer.periodic(const Duration(seconds: 10), (_) => _refreshLocations());
-    _pushTimer = Timer.periodic(const Duration(seconds: 10), (_) => _pushMyLocation());
+
+    // Inisialisasi WebSocket realtime stream
+    _realtime.connect();
+    _wsSubscription = _realtime.onFriendLocation.listen((updatedFriend) {
+      if (!mounted) return;
+      setState(() {
+        final index = _friends.indexWhere((f) => f.id == updatedFriend.id);
+        if (index != -1) {
+          _friends[index] = updatedFriend;
+        } else {
+          _friends.add(updatedFriend);
+        }
+      });
+    });
+
+    // Backup polling untuk sync notifikasi & daftar teman per 30 detik
+    _pollTimer = Timer.periodic(const Duration(seconds: 30), (_) => _refreshLocations());
+    // Interval stream lokasi sendiri saat bergerak
+    _pushTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pushMyLocation());
   }
 
   Future<void> _startSharingIfOn() async {
@@ -84,11 +103,15 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (!mounted) return;
       setState(() => _friends = friends);
     } catch (_) {/* offline: biarkan data terakhir */}
-    // Ambil jumlah total teman untuk banner
+    // Ambil jumlah total teman untuk banner & unread notifikasi
     try {
       final allFriends = await ApiClient.friends();
+      final notifs = await ApiClient.notifications();
       if (!mounted) return;
-      setState(() => _totalFriends = allFriends.length);
+      setState(() {
+        _totalFriends = allFriends.length;
+        _unread = notifs.length;
+      });
     } catch (_) {}
   }
 
@@ -106,14 +129,27 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         final level = await Battery().batteryLevel;
         batteryLevel = level >= 0 ? level : null;
       } catch (_) {}
-      await ApiClient.pushLocation(
-        lat: pos.latitude,
-        lng: pos.longitude,
-        accuracy: pos.accuracy,
-        heading: pos.heading >= 0 ? pos.heading : null,
-        battery: batteryLevel,
-        isMocked: pos.isMocked,
-      );
+      // Kirim via WebSocket realtime stream jika terhubung
+      if (_realtime.isConnected) {
+        _realtime.sendLocation(
+          lat: pos.latitude,
+          lng: pos.longitude,
+          accuracy: pos.accuracy,
+          heading: pos.heading >= 0 ? pos.heading : null,
+          battery: batteryLevel,
+          isMocked: pos.isMocked,
+        );
+      } else {
+        // Fallback REST API jika WS belum terhubung
+        await ApiClient.pushLocation(
+          lat: pos.latitude,
+          lng: pos.longitude,
+          accuracy: pos.accuracy,
+          heading: pos.heading >= 0 ? pos.heading : null,
+          battery: batteryLevel,
+          isMocked: pos.isMocked,
+        );
+      }
       if (mounted) setState(() => _myPosition = meLatLng);
     } catch (_) {} // izin lokasi ditangani lewat _ensurePermission
     finally { _busy = false; }
@@ -198,14 +234,6 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
-  }
-
-  String _timeAgo(DateTime t) {
-    final d = DateTime.now().difference(t);
-    if (d.inMinutes < 1) return 'baru saja';
-    if (d.inMinutes < 60) return '${d.inMinutes} mnt lalu';
-    if (d.inHours < 24) return '${d.inHours} jam lalu';
-    return '${d.inDays} hari lalu';
   }
 
   @override
@@ -433,51 +461,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   void _showFriendSheet(FriendLocation f) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(FamRadius.sheet)),
       ),
-      builder: (_) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                InitialAvatar(name: f.name, radius: 30),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text(f.name,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleLarge
-                            ?.copyWith(fontWeight: FontWeight.w800)),
-                    Text('Update $_timeAgo(f.updatedAt)',
-                        style: const TextStyle(fontSize: 12, color: FamColors.muted)),
-                  ]),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              BatteryIndicator(level: f.battery),
-              if (f.isMocked)
-                StatusChip(label: '⚠️ posisi diragukan', icon: Icons.warning_amber_rounded, color: FamColors.secondary),
-              if (f.precisionFuzzed)
-                StatusChip(label: 'lokasi kasar ±500m', icon: Icons.blur_on_rounded, color: FamColors.muted),
-            ]),
-            const SizedBox(height: 18),
-            GradientButton(
-              label: 'Fokus ke ${f.name}',
-              onPressed: () {
-                Navigator.pop(context);
-                _focusFriend(f);
-              },
-            ),
-          ],
-        ),
+      builder: (_) => _FriendDetailSheet(
+        friend: f,
+        onFocus: () => _focusFriend(f),
       ),
     );
   }
@@ -486,6 +477,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   void dispose() {
     _pollTimer?.cancel();
     _pushTimer?.cancel();
+    _wsSubscription?.cancel();
+    _realtime.disconnect();
     _moveAnim?.dispose();
     _mapController.dispose();
     super.dispose();
@@ -520,4 +513,189 @@ class _PulsingDotState extends State<PulsingDot> with SingleTickerProviderStateM
 
   @override
   void dispose() { _c.dispose(); super.dispose(); }
+}
+
+class _FriendDetailSheet extends StatefulWidget {
+  final FriendLocation friend;
+  final VoidCallback onFocus;
+
+  const _FriendDetailSheet({required this.friend, required this.onFocus});
+
+  @override
+  State<_FriendDetailSheet> createState() => _FriendDetailSheetState();
+}
+
+class _FriendDetailSheetState extends State<_FriendDetailSheet> {
+  String? _address;
+  bool _loadingAddress = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAddress();
+  }
+
+  Future<void> _loadAddress() async {
+    try {
+      final addr = await ApiClient.reverseGeocode(widget.friend.lat, widget.friend.lng);
+      if (mounted) {
+        setState(() {
+          _address = addr;
+          _loadingAddress = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loadingAddress = false);
+    }
+  }
+
+  String _timeAgo(DateTime t) {
+    final d = DateTime.now().difference(t);
+    if (d.inMinutes < 1) return 'baru saja';
+    if (d.inMinutes < 60) return '${d.inMinutes} mnt lalu';
+    if (d.inHours < 24) return '${d.inHours} jam lalu';
+    return '${d.inDays} hari lalu';
+  }
+
+  String _fmtDist(double m) =>
+      m < 1000 ? '${m.round()} m' : '${(m / 1000).toStringAsFixed(1)} km';
+
+  @override
+  Widget build(BuildContext context) {
+    final f = widget.friend;
+    final isStale = DateTime.now().difference(f.updatedAt).inMinutes > 15;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).padding.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: FamColors.muted.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              AvatarWithRing(name: f.name, isLive: !isStale, radius: 28),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      f.name,
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Update ${_timeAgo(f.updatedAt)}',
+                      style: const TextStyle(fontSize: 12, color: FamColors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              BatteryIndicator(level: f.battery),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Alamat lokasi kasar
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: FamColors.primary.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: FamColors.primary.withValues(alpha: 0.1)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.place_rounded, size: 20, color: FamColors.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _loadingAddress
+                      ? const Text('Memuat nama lokasi...',
+                          style: TextStyle(fontSize: 12.5, color: FamColors.muted, fontStyle: FontStyle.italic))
+                      : Text(
+                          _address ?? 'Lokasi: ${f.lat.toStringAsFixed(4)}, ${f.lng.toStringAsFixed(4)}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, height: 1.3),
+                        ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              StatusChip(
+                label: !isStale
+                    ? ((f.heading ?? -1) >= 0 ? 'Bergerak' : 'Diam')
+                    : 'Offline',
+                icon: !isStale ? Icons.directions_car_rounded : Icons.pause_circle_rounded,
+                color: !isStale ? FamColors.primary : FamColors.muted,
+              ),
+              if (f.distanceM != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(FamRadius.pill),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.straighten_rounded, size: 14, color: FamColors.muted),
+                      const SizedBox(width: 4),
+                      Text('${_fmtDist(f.distanceM!)} dari kamu',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: FamColors.textDark)),
+                    ],
+                  ),
+                ),
+              if (f.isMocked)
+                StatusChip(
+                  label: '⚠️ posisi diragukan',
+                  icon: Icons.warning_amber_rounded,
+                  color: FamColors.secondary,
+                ),
+              if (f.precisionFuzzed)
+                StatusChip(
+                  label: 'lokasi kasar ±500m',
+                  icon: Icons.blur_on_rounded,
+                  color: FamColors.muted,
+                ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          GradientButton(
+            label: '📍 Fokus ke ${f.name}',
+            onPressed: () {
+              Navigator.pop(context);
+              widget.onFocus();
+            },
+          ),
+        ],
+      ),
+    );
+  }
 }

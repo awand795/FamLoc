@@ -49,4 +49,14 @@ async function areFriends(pool, a, b) {
   return rowCount > 0;
 }
 
-module.exports = { signToken, requireAuth, generateInviteCode, fuzzCoord, areFriends };
+function verifyToken(token) {
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    return payload.sub;
+  } catch (_) {
+    return null;
+  }
+}
+
+module.exports = { signToken, verifyToken, requireAuth, generateInviteCode, fuzzCoord, areFriends };
+

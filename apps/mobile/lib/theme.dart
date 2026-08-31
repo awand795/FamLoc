@@ -215,10 +215,194 @@ class BatteryIndicator extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, size: 16, color: color),
+        const SizedBox(width: 2),
         Text('$level%',
             style: GoogleFonts.plusJakartaSans(
                 fontSize: 12, fontWeight: FontWeight.w600, color: color)),
       ],
     );
   }
+}
+
+/// Avatar dengan ring gradient saat live sharing aktif
+class AvatarWithRing extends StatelessWidget {
+  final String name;
+  final String? avatarUrl;
+  final bool isLive;
+  final double radius;
+
+  const AvatarWithRing({
+    super.key,
+    required this.name,
+    this.avatarUrl,
+    this.isLive = false,
+    this.radius = 24,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.all(isLive ? 3 : 0),
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: isLive ? FamColors.primaryGradient : null,
+        boxShadow: isLive ? FamColors.softShadow(opacity: 0.25) : null,
+      ),
+      child: Container(
+        padding: const EdgeInsets.all(2),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        child: avatarUrl != null
+            ? CircleAvatar(
+                radius: radius,
+                backgroundImage: NetworkImage(avatarUrl!),
+              )
+            : InitialAvatar(name: name, radius: radius),
+      ),
+    );
+  }
+}
+
+/// Scanner viewfinder cutout overlay dengan sudut bergaya Dribbble
+class ScannerViewfinder extends StatefulWidget {
+  final double size;
+  const ScannerViewfinder({super.key, this.size = 260});
+
+  @override
+  State<ScannerViewfinder> createState() => _ScannerViewfinderState();
+}
+
+class _ScannerViewfinderState extends State<ScannerViewfinder>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _anim = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1800),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: SizedBox(
+        width: widget.size,
+        height: widget.size,
+        child: Stack(
+          children: [
+            // Border box dengan corner accents
+            CustomPaint(
+              size: Size(widget.size, widget.size),
+              painter: _ViewfinderPainter(
+                color: FamColors.primaryLight,
+                cornerLength: 32,
+                strokeWidth: 4,
+                borderRadius: 24,
+              ),
+            ),
+            // Laser garis pemindai yang bergerak naik-turun
+            AnimatedBuilder(
+              animation: _anim,
+              builder: (context, child) {
+                return Positioned(
+                  top: 20 + (_anim.value * (widget.size - 44)),
+                  left: 16,
+                  right: 16,
+                  child: Container(
+                    height: 3,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          FamColors.primaryLight.withValues(alpha: 0.9),
+                          FamColors.primary,
+                          FamColors.primaryLight.withValues(alpha: 0.9),
+                          Colors.transparent,
+                        ],
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: FamColors.primaryLight.withValues(alpha: 0.6),
+                          blurRadius: 10,
+                          spreadRadius: 2,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ViewfinderPainter extends CustomPainter {
+  final Color color;
+  final double cornerLength;
+  final double strokeWidth;
+  final double borderRadius;
+
+  _ViewfinderPainter({
+    required this.color,
+    required this.cornerLength,
+    required this.strokeWidth,
+    required this.borderRadius,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final w = size.width;
+    final h = size.height;
+    final r = borderRadius;
+    final len = cornerLength;
+
+    // Top-Left
+    final pathTL = Path()
+      ..moveTo(0, r + len)
+      ..lineTo(0, r)
+      ..quadraticBezierTo(0, 0, r, 0)
+      ..lineTo(r + len, 0);
+    canvas.drawPath(pathTL, paint);
+
+    // Top-Right
+    final pathTR = Path()
+      ..moveTo(w - r - len, 0)
+      ..lineTo(w - r, 0)
+      ..quadraticBezierTo(w, 0, w, r)
+      ..lineTo(w, r + len);
+    canvas.drawPath(pathTR, paint);
+
+    // Bottom-Left
+    final pathBL = Path()
+      ..moveTo(0, h - r - len)
+      ..lineTo(0, h - r)
+      ..quadraticBezierTo(0, h, r, h)
+      ..lineTo(r + len, h);
+    canvas.drawPath(pathBL, paint);
+
+    // Bottom-Right
+    final pathBR = Path()
+      ..moveTo(w - r - len, h)
+      ..lineTo(w - r, h)
+      ..quadraticBezierTo(w, h, w, h - r)
+      ..lineTo(w, h - r - len);
+    canvas.drawPath(pathBR, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

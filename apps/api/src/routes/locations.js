@@ -14,6 +14,8 @@ function approxDistanceM(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+const { handleLocationUpdate } = require('../websocket');
+
 // POST /api/v1/locations { lat, lng, accuracy, heading, battery, is_mocked }
 router.post('/locations', requireAuth, async (req, res) => {
   try {
@@ -28,19 +30,8 @@ router.post('/locations', requireAuth, async (req, res) => {
         nlat < -90 || nlat > 90 || nlng < -180 || nlng > 180) {
       return res.status(400).json({ error: 'lat/lng tidak valid' });
     }
-    const acc = req.body.accuracy != null ? Number(req.body.accuracy) : null;
-    const head = req.body.heading != null ? Number(req.body.heading) : null;
-    const bat = req.body.battery != null
-      ? Math.max(0, Math.min(100, Math.round(Number(req.body.battery)))) : null;
-    const mocked = Boolean(req.body.is_mocked);
-    await pool.query(
-      `INSERT INTO user_locations (user_id, geom, accuracy, heading, battery, is_mocked, updated_at)
-       VALUES ($1, ST_SetSRID(ST_MakePoint($2,$3),4326)::geography, $4,$5,$6,$7, now())
-       ON CONFLICT (user_id) DO UPDATE SET geom=EXCLUDED.geom, accuracy=EXCLUDED.accuracy,
-         heading=EXCLUDED.heading, battery=EXCLUDED.battery,
-         is_mocked=EXCLUDED.is_mocked, updated_at=now()`,
-      [req.userId, nlng, nlat, acc, head, bat, mocked]
-    );
+
+    await handleLocationUpdate(req.userId, req.body);
     return res.json({ ok: true });
   } catch (err) { console.error(err); return res.status(500).json({ error: 'Kesalahan server' }); }
 });

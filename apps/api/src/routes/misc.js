@@ -39,6 +39,24 @@ router.post('/friend-requests/respond', requireAuth, async (req, res) => {
   }
 });
 
+// DELETE /api/v1/friend-requests/:id — batalkan permintaan yang dikirim sendiri (hanya pending)
+router.delete('/friend-requests/:id', requireAuth, async (req, res) => {
+  try {
+    const { rowCount } = await pool.query(
+      `DELETE FROM friend_requests
+       WHERE id=$1 AND requester_id=$2 AND status='pending'`,
+      [req.params.id, req.userId]
+    );
+    if (rowCount === 0) {
+      return res.status(404).json({ error: 'Permintaan tidak ditemukan atau tidak bisa dibatalkan' });
+    }
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: 'Kesalahan server' });
+  }
+});
+
 // GET /api/v1/users/:id/avatar — publik dengan cache; URL memakai versi
 router.get('/users/:id/avatar', async (req, res) => {
   try {

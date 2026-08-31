@@ -70,7 +70,6 @@ Future<void> _pushLocationBackground() async {
 Future<void> initBackgroundTask() async {
   await Workmanager().initialize(
     callbackDispatcher,
-    isInDebugMode: false,
   );
 
   await Workmanager().registerPeriodicTask(
