@@ -12,8 +12,8 @@ import '../theme.dart';
 import 'family_screen.dart';
 import 'profile_screen.dart';
 
-/// Atribusi wajib tile OpenStreetMap — JANGAN dihapus.
-const String kOsmAttribution = '© OpenStreetMap contributors';
+/// Atribusi peta Google Maps
+const String kMapAttribution = '© Google Maps';
 
 class MapHomeScreen extends StatefulWidget {
   const MapHomeScreen({super.key});
@@ -328,9 +328,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             ),
             children: [
               TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                urlTemplate: 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}',
+                subdomains: const ['0', '1', '2', '3'],
                 userAgentPackageName: 'eu.awanda.famloc',
-                maxZoom: 19,
+                maxZoom: 20,
                 tileBuilder: (context, tileWidget, tile) {
                   return Container(
                     color: const Color(0xFFE8ECEF),
@@ -343,7 +344,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
           const Positioned(
             left: 4, bottom: 2,
-            child: Text(kOsmAttribution,
+            child: Text(kMapAttribution,
                 style: TextStyle(fontSize: 10, color: FamColors.muted)),
           ),
           // Banner Status Berbagi Lokasi Sendiri
