@@ -53,6 +53,13 @@
         <!-- Workmanager background task receiver -->
         <receiver android:name="dev.flutterbackground.worker.FlutterBackgroundWorker" android:exported="false"/>
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" android:exported="false"/>
+
+        <!-- Geolocator foreground service for continuous background location tracking (Android 14+) -->
+        <service
+            android:name="com.baseflow.geolocator.GeolocatorLocationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
