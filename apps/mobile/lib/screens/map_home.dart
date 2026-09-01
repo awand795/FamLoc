@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -59,6 +60,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   final Set<String> _lowBatteryAlertedUsers = {};
   final Set<String> _speedAlertedUsers = {};
   DateTime? _lastSelfSpeedAlert;
+  DateTime? _lastBackPressTime;
   final Map<String, String> _lastKnownGeofenceZone = {}; // userId -> placeName
   final Map<String, Map<String, double>> _previousPlaceDistances = {}; // userId -> {placeId: distance}
 
@@ -1226,7 +1228,32 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         ? (followDist < 1000 ? '${followDist.round()} m' : '${(followDist / 1000).toStringAsFixed(1)} km')
         : null;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_followingUserId != null) {
+          setState(() => _followingUserId = null);
+          _showSnack('Berhenti mengikuti live');
+          return;
+        }
+        if (_activeRouteTrail.isNotEmpty) {
+          setState(() {
+            _activeRouteTrail = [];
+            _trailUserId = null;
+          });
+          _showSnack('Jejak rute disembunyikan');
+          return;
+        }
+        final now = DateTime.now();
+        if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
+          _lastBackPressTime = now;
+          _showSnack('Tekan sekali lagi untuk keluar dari aplikasi');
+          return;
+        }
+        SystemNavigator.pop();
+      },
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         title: Text('Halo, ${_me?.name ?? ''} 👋'),
@@ -1643,7 +1670,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildActiveSosBanner(SosAlert alert) {

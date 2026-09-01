@@ -13,12 +13,12 @@ void main() async {
   await NotificationService.initialize();
   await SupabaseService.initialize();
   final loggedIn = SupabaseService.isLoggedIn;
-  runApp(FamLocApp(initialRoute: loggedIn ? '/home' : '/'));
+  runApp(FamLocApp(loggedIn: loggedIn));
 }
 
 class FamLocApp extends StatelessWidget {
-  final String initialRoute;
-  const FamLocApp({super.key, required this.initialRoute});
+  final bool loggedIn;
+  const FamLocApp({super.key, required this.loggedIn});
 
   @override
   Widget build(BuildContext context) {
@@ -26,11 +26,7 @@ class FamLocApp extends StatelessWidget {
       title: 'FamLoc',
       debugShowCheckedModeBanner: false,
       theme: buildFamTheme(),
-      initialRoute: initialRoute,
-      routes: {
-        '/': (_) => const OnboardingScreen(),
-        '/home': (_) => const MapHomeScreen(),
-      },
+      home: loggedIn ? const MapHomeScreen() : const OnboardingScreen(),
     );
   }
 }
