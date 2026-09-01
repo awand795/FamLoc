@@ -451,16 +451,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               heroTag: 'focus_family',
               backgroundColor: FamColors.primary,
               foregroundColor: Colors.white,
-              tooltip: 'Fokus & Ikuti Keluarga',
-              onPressed: () {
-                if (_family.length == 1) {
-                  _focusMember(_family.first);
-                } else {
-                  final currentIndex = _family.indexWhere((f) => f.userId == _followingUserId);
-                  final nextIndex = (currentIndex + 1) % _family.length;
-                  _focusMember(_family[nextIndex]);
-                }
-              },
+              tooltip: 'Pilih & Fokus Keluarga',
+              onPressed: _showFamilyPickerSheet,
               child: const Icon(Icons.people_alt_rounded),
             ),
             const SizedBox(height: 8),
@@ -627,6 +619,184 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         member: f,
         myPosition: _myPosition,
         onFocus: () => _focusMember(f),
+      ),
+    );
+  }
+
+  void _showFamilyPickerSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(FamRadius.sheet)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).padding.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: FamColors.muted.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Icon(Icons.people_alt_rounded, color: FamColors.primary),
+                const SizedBox(width: 8),
+                Text(
+                  'Pilih Anggota Keluarga',
+                  style: Theme.of(ctx).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 17,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Ketuk nama untuk fokus dan mengikuti pergerakan lokasinya:',
+              style: TextStyle(fontSize: 12.5, color: FamColors.muted),
+            ),
+            const SizedBox(height: 14),
+            ..._family.map((f) {
+              final isFollowing = f.userId == _followingUserId;
+              final isLive = DateTime.now().difference(f.updatedAt).inMinutes <= 15;
+              final dist = _myPosition != null
+                  ? const Distance().as(LengthUnit.Meter, _myPosition!, LatLng(f.lat, f.lng))
+                  : null;
+              final distStr = dist != null
+                  ? (dist < 1000 ? '${dist.round()} m' : '${(dist / 1000).toStringAsFixed(1)} km')
+                  : null;
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: isFollowing ? FamColors.primary.withValues(alpha: 0.08) : Colors.white,
+                  borderRadius: BorderRadius.circular(FamRadius.card),
+                  border: Border.all(
+                    color: isFollowing ? FamColors.primary : Colors.black12,
+                    width: isFollowing ? 1.5 : 1,
+                  ),
+                ),
+                child: ListTile(
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  leading: AvatarWithRing(name: f.name, isLive: isLive, radius: 22),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          f.name,
+                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                        ),
+                      ),
+                      if (f.battery != null) ...[
+                        Icon(
+                          f.battery! <= 20
+                              ? Icons.battery_alert_rounded
+                              : (f.battery! <= 50 ? Icons.battery_3_bar_rounded : Icons.battery_full_rounded),
+                          size: 14,
+                          color: f.battery! <= 20 ? Colors.red : (f.battery! <= 50 ? Colors.orange : Colors.green),
+                        ),
+                        const SizedBox(width: 2),
+                        Text(
+                          '${f.battery}%',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: f.battery! <= 20 ? Colors.red : (f.battery! <= 50 ? Colors.orange : Colors.green.shade800),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  subtitle: Row(
+                    children: [
+                      Text(
+                        isLive ? '🟢 Online' : '⚪ Offline',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w600,
+                          color: isLive ? Colors.green.shade700 : FamColors.muted,
+                        ),
+                      ),
+                      if (distStr != null) ...[
+                        const Text(' · ', style: TextStyle(color: FamColors.muted)),
+                        Text(
+                          '$distStr dari kamu',
+                          style: const TextStyle(fontSize: 11.5, color: FamColors.muted),
+                        ),
+                      ],
+                    ],
+                  ),
+                  trailing: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isFollowing ? FamColors.primary : FamColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(FamRadius.pill),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.videocam_rounded,
+                          size: 14,
+                          color: isFollowing ? Colors.white : FamColors.primary,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isFollowing ? 'Mengikuti' : 'Fokus',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: isFollowing ? Colors.white : FamColors.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _focusMember(f);
+                  },
+                ),
+              );
+            }),
+            const SizedBox(height: 10),
+            Center(
+              child: TextButton.icon(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  final selectedUserId = await Navigator.of(context).push<String>(
+                    MaterialPageRoute(builder: (_) => const FamilyScreen()),
+                  );
+                  await _refreshLocations();
+                  if (selectedUserId != null) {
+                    final target = _family.where((f) => f.userId == selectedUserId).firstOrNull;
+                    if (target != null) {
+                      _focusMember(target);
+                    }
+                  }
+                },
+                icon: const Icon(Icons.person_add_rounded, size: 16),
+                label: const Text('Kelola & Tambah Anggota Keluarga', style: TextStyle(fontWeight: FontWeight.w600)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
