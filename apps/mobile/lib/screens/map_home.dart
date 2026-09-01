@@ -691,6 +691,244 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     );
   }
 
+  // --- Daftar & Pengelola Zona Aman Bersama Keluarga ---
+  void _showPlacesManagerSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(FamRadius.sheet)),
+      ),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setSheetState) => Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 20,
+            bottom: MediaQuery.of(ctx).padding.bottom + 20,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.black12,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: FamColors.primary.withValues(alpha: 0.12),
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.shield_rounded, color: FamColors.primary, size: 22),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Zona Aman Bersama (${_places.length})',
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                        ),
+                        const SizedBox(height: 2),
+                        const Text(
+                          'Tersinkronisasi otomatis untuk seluruh keluarga',
+                          style: TextStyle(fontSize: 12, color: FamColors.muted),
+                        ),
+                      ],
+                    ),
+                  ),
+                  FilledButton.icon(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: FamColors.primary,
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _showAddPlaceDialog();
+                    },
+                    icon: const Icon(Icons.add_rounded, size: 16),
+                    label: const Text('Tambah', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(FamRadius.card),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, color: Colors.blue.shade700, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Setiap zona aman yang ditambahkan otomatis aktif di HP seluruh keluarga. Notifikasi tiba/keluar akan diterima bersama.',
+                        style: TextStyle(fontSize: 11.5, color: Colors.blue.shade900, height: 1.35),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (_places.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                  alignment: Alignment.center,
+                  child: Column(
+                    children: [
+                      const Icon(Icons.add_location_alt_outlined, size: 44, color: Colors.black26),
+                      const SizedBox(height: 10),
+                      const Text(
+                        'Belum Ada Zona Aman Bersama',
+                        style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Tambahkan Rumah, Kost, atau Kantor agar aplikasi otomatis memberi kabar saat keluarga tiba.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: FamColors.muted),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                ConstrainedBox(
+                  constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.45),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _places.length,
+                    itemBuilder: (context, i) {
+                      final p = _places[i];
+                      final dist = _myPosition != null
+                          ? const Distance().as(LengthUnit.Meter, _myPosition!, LatLng(p.lat, p.lng))
+                          : null;
+                      final distStr = dist != null
+                          ? (dist < 1000 ? '${dist.round()} m' : '${(dist / 1000).toStringAsFixed(1)} km')
+                          : null;
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.02),
+                          borderRadius: BorderRadius.circular(FamRadius.card),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                          leading: Container(
+                            width: 42,
+                            height: 42,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: FamColors.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(p.icon, style: const TextStyle(fontSize: 22)),
+                          ),
+                          title: Text(
+                            p.name,
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Radius ${p.radius.round()}m · Ditambahkan ${p.creatorName ?? "Keluarga"}',
+                                style: const TextStyle(fontSize: 11.5, color: FamColors.muted),
+                              ),
+                              if (distStr != null)
+                                Text(
+                                  '📍 $distStr dari posisimu saat ini',
+                                  style: const TextStyle(fontSize: 11, color: FamColors.primary, fontWeight: FontWeight.w600),
+                                ),
+                            ],
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.my_location_rounded, color: FamColors.primary, size: 20),
+                                tooltip: 'Lihat di Peta',
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _animateTo(LatLng(p.lat, p.lng), zoom: 16.5);
+                                  _showSnack('📍 Melihat zona aman "${p.name}"');
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline_rounded, color: Colors.redAccent, size: 20),
+                                tooltip: 'Hapus Zona',
+                                onPressed: () {
+                                  Navigator.pop(ctx);
+                                  _confirmDeletePlace(p);
+                                },
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeletePlace(PlaceZone p) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.card)),
+        title: Text('Hapus "${p.name}"?', style: const TextStyle(fontWeight: FontWeight.w800)),
+        content: Text(
+          'Zona aman "${p.name}" akan dihapus dari daftar bersama seluruh keluarga. Apakah Anda yakin?',
+          style: const TextStyle(fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hapus Zona'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await SupabaseService.deletePlace(p.id);
+        await _refreshPlaces();
+        _showSnack('Zona "${p.name}" berhasil dihapus untuk seluruh keluarga');
+      } catch (e) {
+        _showSnack('Gagal menghapus zona: $e');
+      }
+    }
+  }
+
   // --- Place / Geofencing Creator Dialog ---
   Future<void> _showAddPlaceDialog() async {
     final nameCtrl = TextEditingController();
@@ -1365,14 +1603,19 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
           const SizedBox(height: 8),
 
-          // 4. Tombol Zona Aman / Tambah Tempat Geofence
+          // 4. Tombol Zona Aman Bersama
           FloatingActionButton.small(
             heroTag: 'place_btn',
             backgroundColor: Colors.white,
             foregroundColor: FamColors.primary,
-            tooltip: 'Tambah Zona Aman',
-            onPressed: _showAddPlaceDialog,
-            child: const Icon(Icons.add_location_alt_rounded),
+            tooltip: 'Zona Aman Bersama (${_places.length})',
+            onPressed: _showPlacesManagerSheet,
+            child: Badge(
+              isLabelVisible: _places.isNotEmpty,
+              label: Text('${_places.length}', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+              backgroundColor: FamColors.primary,
+              child: const Icon(Icons.shield_rounded),
+            ),
           ),
           const SizedBox(height: 8),
 
@@ -1478,9 +1721,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       width: 100, height: 60,
       point: LatLng(p.lat, p.lng),
       child: GestureDetector(
-        onTap: () {
-          _showSnack('📍 Zona Aman: ${p.name} (Radius ${p.radius.round()}m)');
-        },
+        onTap: _showPlacesManagerSheet,
         child: Column(
           children: [
             Container(

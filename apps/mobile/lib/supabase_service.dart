@@ -125,6 +125,7 @@ class SosAlert {
 class PlaceZone {
   final String id;
   final String userId;
+  final String? creatorName;
   final String name;
   final String icon;
   final double lat;
@@ -135,6 +136,7 @@ class PlaceZone {
   PlaceZone({
     required this.id,
     required this.userId,
+    this.creatorName,
     required this.name,
     required this.icon,
     required this.lat,
@@ -144,9 +146,11 @@ class PlaceZone {
   });
 
   factory PlaceZone.fromMap(Map<String, dynamic> map) {
+    final profile = map['profiles'] as Map<String, dynamic>?;
     return PlaceZone(
       id: map['id'] ?? '',
       userId: map['user_id'] ?? '',
+      creatorName: profile?['name'],
       name: map['name'] ?? 'Tempat',
       icon: map['icon'] ?? '🏠',
       lat: (map['lat'] as num).toDouble(),
@@ -571,7 +575,7 @@ class SupabaseService {
     try {
       final res = await client
           .from('places')
-          .select()
+          .select('*, profiles(name)')
           .order('created_at', ascending: false);
       return (res as List).map((p) => PlaceZone.fromMap(p)).toList();
     } catch (_) {
