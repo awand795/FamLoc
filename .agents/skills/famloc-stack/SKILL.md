@@ -9,17 +9,26 @@ description: Tech stack dan arsitektur aplikasi FamLoc (live location keluarga).
 
 | Komponen | Pilihan | Catatan |
 |---|---|---|
-| Mobile app | **Flutter (Dart)** | Satu codebase Android + iOS |
+| Mobile App | **Flutter (Dart v3.5+)** | Satu codebase Android + iOS |
 | Backend & Database | **Supabase (BaaS)** | 100% Serverless. Mengelola Database PostgreSQL + PostGIS, Auth, Storage, dan Realtime WebSocket |
-| Realtime Live Tracking | **Supabase Realtime (WebSocket)** | Menggunakan Postgres Changes stream & WebSocket duplex via `supabase_flutter` |
-| Auth | **Supabase Auth** | Email + Password bawaan Supabase, sesi persisten |
-| Storage Avatar | **Supabase Storage** | Bucket `avatars` publik untuk foto profil |
-| Map SDK | **flutter_map + tile OpenStreetMap** | Gratis, tanpa API key. WAJIB sertakan atribusi © OpenStreetMap contributors |
-| Penggunaan | **Keluarga (Anda & Mama)** | Saling berbagi lokasi secara langsung dan realtime tanpa perantara backend terpisah |
+| Realtime Live Tracking | **Supabase Realtime (WebSocket)** | Menggunakan Postgres Changes stream duplex via `supabase_flutter` |
+| Auth | **Supabase Auth** | Email + Password bawaan Supabase, auto-confirm aktif, sesi persisten |
+| Storage Avatar | **Supabase Storage** | Bucket `avatars` publik untuk foto profil pengguna |
+| Peta & Tile Engine | **`flutter_map` + Google Maps Tiles** | Menggunakan server raster resmi Google Maps (`mt0-mt3.google.com`) dengan mode Jalan (`lyrs=m`), Satelit Hybrid (`lyrs=y`), dan Terrain (`lyrs=p`) |
+| Navigasi Eksternal | **`url_launcher`** | Intent langsung ke Google Maps Navigasi (`google.navigation` / URL directions) |
+| Pelacakan Latar Belakang | **Android Foreground Service + WakeLock** | Izin `ACCESS_BACKGROUND_LOCATION`, `POST_NOTIFICATIONS`, dan deklarasi `foregroundServiceType="location"` di AndroidManifest.xml |
+| Keep-Alive System | **GitHub Actions** | Ping REST API setiap 3 hari untuk mencegah auto-pause pada Supabase Free Tier |
+
+## Skema Database Supabase
+
+1. **`public.profiles`**: `id (UUID PK)`, `name (TEXT)`, `email (TEXT)`, `avatar_url (TEXT)`, `sharing_on (BOOLEAN)`
+2. **`public.user_locations`**: `user_id (UUID PK)`, `lat (DOUBLE)`, `lng (DOUBLE)`, `accuracy (REAL)`, `heading (REAL)`, `speed (DOUBLE)`, `battery (SMALLINT)`, `is_mocked (BOOLEAN)`, `updated_at (TIMESTAMPTZ)`
+3. **`public.friendships`**: `id (UUID PK)`, `user_id_a (UUID)`, `user_id_b (UUID)`, `created_at (TIMESTAMPTZ)`
+4. **`public.sos_alerts`**: `id (UUID PK)`, `user_id (UUID)`, `lat (DOUBLE)`, `lng (DOUBLE)`, `battery (SMALLINT)`, `is_active (BOOLEAN)`, `created_at (TIMESTAMPTZ)`
 
 ## Aturan Arsitektur
 
-1. **Flutter berkomunikasi langsung ke Supabase**: Semua operasi DB, auth, storage, dan streaming lokasi ditangani oleh `SupabaseService`.
-2. **Realtime WebSocket**: Stream `user_locations` mendeteksi pergerakan anggota keluarga secara instan.
-3. **Keamanan**: Row Level Security (RLS) di PostgreSQL membatasi akses profil dan lokasi hanya untuk pengguna terotentikasi.
-4. **Semua komunikasi terenkripsi SSL/TLS (HTTPS & WSS)**.
+1. **Flutter Berkomunikasi Langsung ke Supabase**: Semua operasi DB, auth, storage, pertemanan, dan streaming lokasi ditangani oleh `SupabaseService`.
+2. **Realtime WebSocket**: Stream `user_locations` dan `sos_alerts` mendeteksi pergerakan serta peringatan darurat secara instan.
+3. **Keamanan RLS**: Row Level Security (RLS) di PostgreSQL membatasi akses profil dan lokasi hanya untuk pengguna terotentikasi dan anggota keluarga yang terhubung.
+4. **Semua Komunikasi Terenkripsi SSL/TLS (HTTPS & WSS)**.
