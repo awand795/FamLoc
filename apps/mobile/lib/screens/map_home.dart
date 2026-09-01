@@ -980,6 +980,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
     final destinationEta = followedMember != null ? _calculateDestinationEta(followedMember) : null;
 
+    final followDist = (followedMember != null && _myPosition != null)
+        ? const Distance().as(LengthUnit.Meter, _myPosition!, LatLng(followedMember.lat, followedMember.lng))
+        : null;
+
+    final followDistStr = followDist != null
+        ? (followDist < 1000 ? '${followDist.round()} m' : '${(followDist / 1000).toStringAsFixed(1)} km')
+        : null;
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -1138,49 +1146,190 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               ),
             ),
 
-          // Floating Pill saat Mode Auto-Follow Aktif (Lengkap dengan Deteksi Arah & ETA Cerdas)
+          // Live Companion Dashboard Card saat Mode Auto-Follow Aktif (Lengkap dengan Status, Jarak, Kecepatan, Baterai, ETA, & Aksi Cepat)
           if (followedMember != null)
             Positioned(
-              bottom: 24,
+              bottom: 16,
               left: 16,
               right: 16,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.88),
-                    borderRadius: BorderRadius.circular(FamRadius.pill),
-                    boxShadow: FamColors.softShadow(opacity: 0.3),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.videocam_rounded, color: Colors.greenAccent, size: 18),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          destinationEta ?? 'Mengikuti ${followedMember.name}',
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.96),
+                  borderRadius: BorderRadius.circular(FamRadius.card),
+                  boxShadow: FamColors.softShadow(opacity: 0.25),
+                  border: Border.all(color: FamColors.primary.withValues(alpha: 0.3), width: 1.5),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Baris 1: Header Nama, Avatar, Status Denyut, & Tombol Tutup
+                    Row(
+                      children: [
+                        AvatarWithRing(name: followedMember.name, isLive: true, radius: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    followedMember.name,
+                                    style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green.shade50,
+                                      borderRadius: BorderRadius.circular(FamRadius.pill),
+                                      border: Border.all(color: Colors.green.shade300),
+                                    ),
+                                    child: const Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.videocam_rounded, size: 12, color: Colors.green),
+                                        SizedBox(width: 3),
+                                        Text('Mengikuti Live', style: TextStyle(fontSize: 10.5, color: Colors.green, fontWeight: FontWeight.w700)),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                destinationEta ?? 'Pergerakan dipantau realtime',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: destinationEta != null ? FamColors.primary : FamColors.muted,
+                                  fontWeight: destinationEta != null ? FontWeight.w700 : FontWeight.normal,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: () => setState(() => _followingUserId = null),
-                        child: Container(
-                          padding: const EdgeInsets.all(3),
-                          decoration: const BoxDecoration(color: Colors.white24, shape: BoxShape.circle),
-                          child: const Icon(Icons.close_rounded, color: Colors.white, size: 14),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded, color: FamColors.muted, size: 20),
+                          tooltip: 'Berhenti Mengikuti',
+                          onPressed: () => setState(() => _followingUserId = null),
                         ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Baris 2: Metrik Lengkap (Kecepatan, Jarak, Baterai)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.04),
+                        borderRadius: BorderRadius.circular(FamRadius.pill),
                       ),
-                    ],
-                  ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          // Kecepatan
+                          Row(
+                            children: [
+                              const Icon(Icons.speed_rounded, size: 15, color: FamColors.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                _formatSpeedText(followedMember.speed),
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          Container(width: 1, height: 14, color: Colors.black12),
+                          // Jarak
+                          Row(
+                            children: [
+                              const Icon(Icons.straighten_rounded, size: 15, color: FamColors.primary),
+                              const SizedBox(width: 4),
+                              Text(
+                                followDistStr ?? 'Menghitung...',
+                                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          Container(width: 1, height: 14, color: Colors.black12),
+                          // Baterai
+                          Row(
+                            children: [
+                              Icon(
+                                (followedMember.battery ?? 100) <= 20
+                                    ? Icons.battery_alert_rounded
+                                    : Icons.battery_charging_full_rounded,
+                                size: 15,
+                                color: (followedMember.battery ?? 100) <= 20 ? Colors.red : Colors.green,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                '${followedMember.battery ?? "-"}%',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 12,
+                                  color: (followedMember.battery ?? 100) <= 20 ? Colors.red : Colors.green.shade800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+
+                    // Baris 3: Aksi Cepat (Rute Maps, Telepon, WhatsApp, Deringkan)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: FamColors.primary,
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+                            ),
+                            onPressed: () => launchNavigation(followedMember.lat, followedMember.lng),
+                            icon: const Icon(Icons.navigation_rounded, size: 15),
+                            label: const Text('Rute Maps', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        IconButton.filledTonal(
+                          style: IconButton.styleFrom(padding: const EdgeInsets.all(8)),
+                          icon: const Icon(Icons.phone_rounded, size: 16, color: Colors.green),
+                          tooltip: 'Telepon',
+                          onPressed: () => launchCall(followedMember.phone),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton.filledTonal(
+                          style: IconButton.styleFrom(padding: const EdgeInsets.all(8)),
+                          icon: const Icon(Icons.chat_bubble_rounded, size: 16, color: Color(0xFF25D366)),
+                          tooltip: 'WhatsApp',
+                          onPressed: () => launchWhatsApp(followedMember.phone, followedMember.name),
+                        ),
+                        const SizedBox(width: 4),
+                        IconButton.filledTonal(
+                          style: IconButton.styleFrom(padding: const EdgeInsets.all(8)),
+                          icon: const Icon(Icons.volume_up_rounded, size: 16, color: Colors.amber),
+                          tooltip: 'Deringkan HP',
+                          onPressed: () async {
+                            try {
+                              await SupabaseService.triggerRingDevice(targetUserId: followedMember.userId);
+                              _showSnack('🔊 Sinyal dering dikirimkan ke HP ${followedMember.name}!');
+                            } catch (e) {
+                              _showSnack('Gagal kirim dering: $e');
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
             ),
         ],
       ),
-      floatingActionButton: Column(
+      floatingActionButton: followedMember != null ? null : Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           // 1. Tombol SOS Darurat Merah
