@@ -115,8 +115,15 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       _refreshRingAlerts();
     });
 
-    // Interval stream lokasi sendiri tiap 5 detik
-    _pushTimer = Timer.periodic(const Duration(seconds: 5), (_) => _pushMyLocation());
+    // Interval stream lokasi sendiri & sync heartbeat tiap 5 detik (menjaga koneksi tetap hidup di layar mati)
+    _pushTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _pushMyLocation();
+      if (timer.tick % 2 == 0) {
+        _refreshLocations();
+        _refreshSosAlerts();
+        _refreshRingAlerts();
+      }
+    });
   }
 
   Future<void> _refreshProfile() async {
