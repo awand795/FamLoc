@@ -27,7 +27,8 @@
 - 🔋 **Live Battery Badge & Peringatan Otomatis**:
   - Persentase baterai HP keluarga tampil langsung di atas marker peta (`Mama 🔋 85%`).
   - Notifikasi otomatis saat baterai HP keluarga $\le 15\%$ agar segera diingatkan untuk mengecas.
-- 👥 **Menu Pemilih Anggota Keluarga**: Ketuk tombol keluarga bulat di kanan bawah untuk memilih anggota keluarga yang ingin dipantau dengan status online, baterai, dan jarak tempuh.
+- 🔔 **Notifikasi Layar Kunci & Getar/Suara (Lock Screen Popups)**:
+  - Notifikasi penting (Tiba/Keluar Zona, Sinyal Darurat SOS, Pesan Kabar Kilat, dan Peringatan Baterai Lemah) **otomatis menyala, berdering, bergetar, dan muncul di layar kunci HP** meskipun layar HP sedang mati/terkunci (menggunakan *Android High Importance Notification Channels*).
 - 🔒 **Pelacakan Latar Belakang Penuh (Android 14+ & Screen-Off WakeLock)**:
   - Lokasi tetap terkirim secara realtime saat HP di dalam kantong celana atau saat layar HP dimatikan/terkunci di perjalanan.
   - Dilengkapi *Foreground Service* dengan notifikasi status bar dan dukungan sistem Android 10, 11, 12, 13, 14, hingga 15.

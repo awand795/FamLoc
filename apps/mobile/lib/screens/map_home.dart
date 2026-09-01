@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../supabase_service.dart';
 import '../background_task.dart';
+import '../notification_service.dart';
 import '../theme.dart';
 import 'family_screen.dart';
 import 'profile_screen.dart';
@@ -119,6 +120,15 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     try {
       final alerts = await SupabaseService.getActiveSosAlerts();
       if (!mounted) return;
+      for (final a in alerts) {
+        if (!_activeSosList.any((prev) => prev.id == a.id)) {
+          NotificationService.showSosNotification(
+            name: a.name,
+            lat: a.lat,
+            lng: a.lng,
+          );
+        }
+      }
       setState(() => _activeSosList = alerts);
     } catch (_) {}
   }
@@ -139,6 +149,11 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         if (_latestCheckin == null || _latestCheckin!.id != latest.id) {
           setState(() => _latestCheckin = latest);
           _showSnack('${latest.icon} ${latest.name}: "${latest.message}"');
+          NotificationService.showCheckinNotification(
+            name: latest.name,
+            message: latest.message,
+            icon: latest.icon,
+          );
         }
       }
     } catch (_) {}
@@ -239,6 +254,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (m.battery != null && m.battery! <= 15 && !_lowBatteryAlertedUsers.contains(m.userId)) {
         _lowBatteryAlertedUsers.add(m.userId);
         _showSnack('⚠️ Baterai HP ${m.name} tersisa ${m.battery}%, ingatkan untuk isi daya 🔌');
+        NotificationService.showBatteryNotification(name: m.name, battery: m.battery!);
       } else if (m.battery != null && m.battery! > 20) {
         _lowBatteryAlertedUsers.remove(m.userId);
       }
@@ -246,11 +262,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       // 2. Geofencing Tempat Favorit
       final mPos = LatLng(m.lat, m.lng);
       String? currentZone;
+      String currentZoneIcon = '🏠';
 
       for (final p in _places) {
         final d = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
         if (d <= p.radius) {
           currentZone = p.name;
+          currentZoneIcon = p.icon;
           break;
         }
       }
@@ -258,10 +276,21 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       final previousZone = _lastKnownGeofenceZone[m.userId];
       if (currentZone != null && currentZone != previousZone) {
         _lastKnownGeofenceZone[m.userId] = currentZone;
-        _showSnack('🏡 ${m.name} sudah tiba di $currentZone');
+        _showSnack('$currentZoneIcon ${m.name} sudah tiba di $currentZone');
+        NotificationService.showGeofenceNotification(
+          name: m.name,
+          placeName: currentZone,
+          isArriving: true,
+          icon: currentZoneIcon,
+        );
       } else if (currentZone == null && previousZone != null) {
         _lastKnownGeofenceZone.remove(m.userId);
         _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
+        NotificationService.showGeofenceNotification(
+          name: m.name,
+          placeName: previousZone,
+          isArriving: false,
+        );
       }
     }
   }
