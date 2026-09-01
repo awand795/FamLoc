@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const String kSupabaseUrl = 'https://wcqxtwdbgxmcojllntuh.supabase.co';
@@ -110,6 +111,80 @@ class SosAlert {
       lng: (map['lng'] as num).toDouble(),
       battery: map['battery'] == null ? null : (map['battery'] as num).toInt(),
       isActive: map['is_active'] == true,
+      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
+    );
+  }
+}
+
+class PlaceZone {
+  final String id;
+  final String userId;
+  final String name;
+  final String icon;
+  final double lat;
+  final double lng;
+  final double radius;
+  final DateTime createdAt;
+
+  PlaceZone({
+    required this.id,
+    required this.userId,
+    required this.name,
+    required this.icon,
+    required this.lat,
+    required this.lng,
+    required this.radius,
+    required this.createdAt,
+  });
+
+  factory PlaceZone.fromMap(Map<String, dynamic> map) {
+    return PlaceZone(
+      id: map['id'] ?? '',
+      userId: map['user_id'] ?? '',
+      name: map['name'] ?? 'Tempat',
+      icon: map['icon'] ?? '🏠',
+      lat: (map['lat'] as num).toDouble(),
+      lng: (map['lng'] as num).toDouble(),
+      radius: (map['radius'] as num?)?.toDouble() ?? 150.0,
+      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
+    );
+  }
+}
+
+class QuickCheckin {
+  final String id;
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final String message;
+  final String icon;
+  final double lat;
+  final double lng;
+  final DateTime createdAt;
+
+  QuickCheckin({
+    required this.id,
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    required this.message,
+    required this.icon,
+    required this.lat,
+    required this.lng,
+    required this.createdAt,
+  });
+
+  factory QuickCheckin.fromMap(Map<String, dynamic> map) {
+    final profile = map['profiles'] as Map<String, dynamic>?;
+    return QuickCheckin(
+      id: map['id'] ?? '',
+      userId: map['user_id'] ?? '',
+      name: profile?['name'] ?? 'Keluarga',
+      avatarUrl: profile?['avatar_url'],
+      message: map['message'] ?? '',
+      icon: map['icon'] ?? '💬',
+      lat: (map['lat'] as num).toDouble(),
+      lng: (map['lng'] as num).toDouble(),
       createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
     );
   }
@@ -314,6 +389,17 @@ class SupabaseService {
       'is_mocked': isMocked,
       'updated_at': DateTime.now().toIso8601String(),
     });
+
+    // Catat jejak perjalanan (Location History) jika bergerak
+    try {
+      await client.from('location_history').insert({
+        'user_id': user.id,
+        'lat': lat,
+        'lng': lng,
+        'speed': speed,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+    } catch (_) {}
   }
 
   static Future<List<FamilyMemberLocation>> getFamilyLocations() async {
@@ -340,6 +426,28 @@ class SupabaseService {
       }
     }
     return list;
+  }
+
+  /// Ambil jejak rute hari ini untuk pengguna tertentu
+  static Future<List<LatLng>> getLocationHistoryToday(String userId) async {
+    final todayStart = DateTime.now();
+    final startOfDay = DateTime(todayStart.year, todayStart.month, todayStart.day).toIso8601String();
+
+    try {
+      final res = await client
+          .from('location_history')
+          .select('lat, lng')
+          .eq('user_id', userId)
+          .gte('created_at', startOfDay)
+          .order('created_at', ascending: true)
+          .limit(300);
+
+      return (res as List)
+          .map((row) => LatLng((row['lat'] as num).toDouble(), (row['lng'] as num).toDouble()))
+          .toList();
+    } catch (_) {
+      return [];
+    }
   }
 
   /// Listen realtime stream Postgres Changes via WebSocket
@@ -399,5 +507,82 @@ class SupabaseService {
 
   static Stream<List<Map<String, dynamic>>> streamSosAlerts() {
     return client.from('sos_alerts').stream(primaryKey: ['id']);
+  }
+
+  // ---- Places & Geofencing ----
+  static Future<void> createPlace({
+    required String name,
+    required String icon,
+    required double lat,
+    required double lng,
+    double radius = 150.0,
+  }) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client.from('places').insert({
+      'user_id': user.id,
+      'name': name,
+      'icon': icon,
+      'lat': lat,
+      'lng': lng,
+      'radius': radius,
+    });
+  }
+
+  static Future<List<PlaceZone>> getPlaces() async {
+    try {
+      final res = await client
+          .from('places')
+          .select()
+          .order('created_at', ascending: false);
+      return (res as List).map((p) => PlaceZone.fromMap(p)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> deletePlace(String id) async {
+    await client.from('places').delete().eq('id', id);
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamPlaces() {
+    return client.from('places').stream(primaryKey: ['id']);
+  }
+
+  // ---- Quick Check-in ----
+  static Future<void> sendQuickCheckin({
+    required String message,
+    required String icon,
+    required double lat,
+    required double lng,
+  }) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client.from('quick_checkins').insert({
+      'user_id': user.id,
+      'message': message,
+      'icon': icon,
+      'lat': lat,
+      'lng': lng,
+    });
+  }
+
+  static Future<List<QuickCheckin>> getRecentCheckins() async {
+    final myId = currentUser?.id;
+    if (myId == null) return [];
+    try {
+      final res = await client
+          .from('quick_checkins')
+          .select('*, profiles(name, avatar_url)')
+          .order('created_at', ascending: false)
+          .limit(10);
+      return (res as List).map((c) => QuickCheckin.fromMap(c)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamQuickCheckins() {
+    return client.from('quick_checkins').stream(primaryKey: ['id']);
   }
 }

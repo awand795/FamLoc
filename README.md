@@ -4,18 +4,29 @@
 
 ---
 
-## ✨ Fitur Utama
+## ✨ Fitur Lengkap Aplikasi
 
 - 🚀 **Realtime Live Tracking (WebSocket)**: Pergerakan lokasi anggota keluarga di peta disiarkan secara instan (<100ms latency) melalui koneksi WebSocket persisten bawaan Supabase (`supabase_flutter`).
-- 🗺️ **Tampilan Peta Google Maps Asli & Layer Switcher**:
-  - **Mode Default**: Peta Jalan Google Maps yang bersih, rapi, dan modern.
-  - **Mode Satelit**: Foto Udara Satelit Nyata Google Maps (dengan label nama jalan).
+- 🗺️ **Tampilan Peta Multi-Layer & Dark Mode**:
+  - **Mode Default**: Peta Jalan Google Maps bersih & modern.
+  - **Mode Satelit**: Foto Udara Satelit Nyata Google Maps (dengan nama jalan).
   - **Mode Terrain**: Peta Kontur Topografi Ketinggian Tanah.
+  - **Mode Malam (Dark Mode)**: Peta gelap kontras tinggi, sangat nyaman di mata untuk perjalanan malam dan hemat daya di layar AMOLED.
+- 🏠 **Notifikasi Zona Aman (Geofencing Rumah & Kantor)**:
+  - Buat dan tandai tempat favorit (Rumah, Kantor, Sekolah, Pasar).
+  - Peta otomatis menampilkan lingkaran geofence transparan.
+  - Aplikasi otomatis memunculkan notifikasi saat keluarga tiba atau meninggalkan zona: *"Mama sudah tiba di Rumah 🏡"*.
+- 📜 **Rekam Jejak Rute Hari Ini (Breadcrumb Trail)**:
+  - Tombol *"Lihat Jejak Rute Hari Ini"* untuk menggambar garis biru rute yang telah dilalui dari pagi hingga malam.
+- 💬 **Kabar Kilat 1-Ketukan (Quick Check-in)**:
+  - Siarkan pesan instan ke HP keluarga tanpa repot mengetik: *"Aku sudah sampai ya!"*, *"Sedang jalan pulang"*, *"Tolong jemput"*, dll.
 - 🎥 **Auto-Follow Kamera Realtime**: Kamera peta otomatis meluncur dan mengikuti pergerakan Mama/keluarga di jalan secara langsung saat difokuskan.
 - 🧭 **Petunjuk Arah 1-Ketukan (Buka Google Maps)**: Tombol *"Rute Maps"* yang langsung membuka aplikasi Google Maps di HP dengan rute navigasi tercepat dan estimasi waktu sampai (ETA).
 - 🚨 **Sinyal Darurat SOS Realtime**: Tombol darurat SOS merah yang seketika menyiarkan peringatan darurat ke seluruh anggota keluarga dengan koordinat presisi dan tombol respon cepat.
 - 🚗 **Speedometer & Status Gerak Cerdas**: Mendeteksi otomatis apakah keluarga sedang *Berkendara (km/jam)*, *Berjalan Kaki*, atau *Berhenti/Diam*.
-- 🔋 **Live Battery Badge di Peta**: Persentase sisa baterai HP keluarga tampil langsung di atas marker nama di peta (`Mama 🔋 85%`) dengan indikator warna merah saat $\le 20\%$.
+- 🔋 **Live Battery Badge & Peringatan Otomatis**:
+  - Persentase baterai HP keluarga tampil langsung di atas marker peta (`Mama 🔋 85%`).
+  - Notifikasi otomatis saat baterai HP keluarga $\le 15\%$ agar segera diingatkan untuk mengecas.
 - 👥 **Menu Pemilih Anggota Keluarga**: Ketuk tombol keluarga bulat di kanan bawah untuk memilih anggota keluarga yang ingin dipantau dengan status online, baterai, dan jarak tempuh.
 - 🔒 **Pelacakan Latar Belakang Penuh (Android 14+ & Screen-Off WakeLock)**:
   - Lokasi tetap terkirim secara realtime saat HP di dalam kantong celana atau saat layar HP dimatikan/terkunci di perjalanan.
@@ -24,7 +35,6 @@
   - Saklar berbagi lokasi (On/Off) kapan saja.
   - Data koordinat hanya bisa diakses oleh akun keluarga yang terhubung.
   - Fitur tambah keluarga via email dan fitur **Hapus Teman / Putus Hubungan**.
-  - Deteksi *Mock Location / Fake GPS*.
 - ⏰ **Supabase Keep-Alive Otomatis (GitHub Actions)**: Workflow otomatis mem-ping database Supabase via REST API setiap 3 hari agar project gratis tidak pernah di-*pause*.
 
 ---
@@ -35,10 +45,10 @@
 - **Framework**: [Flutter](https://flutter.dev/) (Dart v3.5+)
 - **Backend-as-a-Service**: [Supabase Flutter SDK](https://pub.dev/packages/supabase_flutter) (`supabase_flutter`)
 - **Map & Geolocation**: `flutter_map`, `latlong2`, `geolocator`
-- **Map Tiles**: Google Maps Road, Satellite Hybrid, & Terrain Tiles (`mt0-mt3.google.com`)
+- **Map Tiles**: Google Maps Road, Satellite Hybrid, & Terrain Tiles + Carto Dark Matter
 - **Navigation & External Intent**: `url_launcher`
 - **Background Tracking**: Android Foreground Service + WakeLock, `workmanager`, `battery_plus`
-- **Database & Realtime**: PostgreSQL + PostGIS di Supabase Cloud
+- **Database & Realtime**: PostgreSQL + PostGIS di Supabase Cloud (Tabel: `profiles`, `user_locations`, `friendships`, `sos_alerts`, `places`, `location_history`, `quick_checkins`)
 
 ---
 
@@ -59,11 +69,11 @@ FamLocation/
 │       ├── lib/
 │       │   ├── screens/
 │       │   │   ├── auth_screen.dart     # Login & Register Supabase
-│       │   │   ├── map_home.dart        # Layar Peta Utama, SOS, Layer Switcher, & Auto-Follow
+│       │   │   ├── map_home.dart        # Layar Peta Utama, SOS, Geofencing, Trail, & Kabar Kilat
 │       │   │   ├── family_screen.dart   # Manajemen Anggota Keluarga & Hapus Teman
 │       │   │   ├── profile_screen.dart  # Edit Nama, Ganti Password, Upload Avatar
 │       │   │   └── onboarding_screen.dart
-│       │   ├── supabase_service.dart    # Layanan Auth, Database, Storage, SOS, & WebSocket
+│       │   ├── supabase_service.dart    # Layanan Auth, Database, Storage, SOS, Places, & WebSocket
 │       │   ├── background_task.dart     # Background Fallback Task (Workmanager)
 │       │   ├── theme.dart               # Design System & UI Tokens
 │       │   └── main.dart                # Entrypoint Flutter
@@ -80,13 +90,7 @@ FamLocation/
 
 ## 🚀 Panduan Menjalankan Aplikasi
 
-### 1. Prasyarat
-- **Flutter SDK**: v3.5 atau lebih baru
-- Akun / Project di [Supabase](https://supabase.com/)
-
----
-
-### 2. Menjalankan di Emulator / HP Fisik
+### 1. Menjalankan di Emulator / HP Fisik
 
 1. Masuk ke direktori `apps/mobile`:
    ```bash
@@ -109,5 +113,5 @@ FamLocation/
 
 ## 📄 Lisensi & Atribusi
 
-- **Data & Gambar Peta**: [© Google Maps](https://www.google.com/maps)
+- **Data & Gambar Peta**: [© Google Maps](https://www.google.com/maps) / [© OpenStreetMap](https://www.openstreetmap.org)
 - **Infrastruktur Backend & Realtime**: [Supabase](https://supabase.com/)

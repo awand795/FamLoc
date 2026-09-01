@@ -13,13 +13,14 @@ import '../theme.dart';
 import 'family_screen.dart';
 import 'profile_screen.dart';
 
-/// Atribusi peta Google Maps
-const String kMapAttribution = '© Google Maps';
+/// Atribusi peta
+const String kMapAttribution = '© Google Maps / OpenStreetMap';
 
 enum MapLayerType {
   normal,
   satellite,
   terrain,
+  dark,
 }
 
 class MapHomeScreen extends StatefulWidget {
@@ -34,11 +35,17 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   final MapController _mapController = MapController();
   StreamSubscription? _realtimeSubscription;
   StreamSubscription? _sosSubscription;
+  StreamSubscription? _placesSubscription;
+  StreamSubscription? _checkinSubscription;
   StreamSubscription<Position>? _positionStreamSub;
   AnimationController? _moveAnim;
   UserProfile? _me;
   List<FamilyMemberLocation> _family = [];
   List<SosAlert> _activeSosList = [];
+  List<PlaceZone> _places = [];
+  List<LatLng> _activeRouteTrail = [];
+  String? _trailUserId;
+  QuickCheckin? _latestCheckin;
   LatLng? _myPosition;
   int? _myBattery;
   double? _mySpeed;
@@ -46,6 +53,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   bool _busy = false;
   Timer? _pushTimer;
   MapLayerType _currentLayer = MapLayerType.normal;
+  final Set<String> _lowBatteryAlertedUsers = {};
+  final Map<String, String> _lastKnownGeofenceZone = {}; // userId -> placeName
 
   static const jakarta = LatLng(-6.2088, 106.8456);
   final LatLng _center = jakarta;
@@ -67,20 +76,31 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       }
     } catch (_) {}
 
-    // 2. Jalankan refresh profile, lokasi, & SOS secara paralel
+    // 2. Jalankan refresh profile, lokasi, SOS, & Places secara paralel
     _refreshProfile().then((_) => _startSharingIfOn());
     _refreshLocations();
     _refreshSosAlerts();
+    _refreshPlaces();
     _focusMe(); // Update dengan GPS akurat saat satelit siap
 
-    // Dengarkan perubahan realtime lokasi dari Supabase
+    // Realtime Location Updates
     _realtimeSubscription = SupabaseService.streamLocations().listen((_) {
       _refreshLocations();
     });
 
-    // Dengarkan sinyal darurat SOS realtime
+    // Realtime SOS Emergency Signals
     _sosSubscription = SupabaseService.streamSosAlerts().listen((_) {
       _refreshSosAlerts();
+    });
+
+    // Realtime Places & Geofencing
+    _placesSubscription = SupabaseService.streamPlaces().listen((_) {
+      _refreshPlaces();
+    });
+
+    // Realtime Quick Check-ins
+    _checkinSubscription = SupabaseService.streamQuickCheckins().listen((_) {
+      _fetchLatestCheckin();
     });
 
     // Interval stream lokasi sendiri tiap 5 detik
@@ -100,6 +120,27 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       final alerts = await SupabaseService.getActiveSosAlerts();
       if (!mounted) return;
       setState(() => _activeSosList = alerts);
+    } catch (_) {}
+  }
+
+  Future<void> _refreshPlaces() async {
+    try {
+      final places = await SupabaseService.getPlaces();
+      if (!mounted) return;
+      setState(() => _places = places);
+    } catch (_) {}
+  }
+
+  Future<void> _fetchLatestCheckin() async {
+    try {
+      final checkins = await SupabaseService.getRecentCheckins();
+      if (checkins.isNotEmpty && mounted) {
+        final latest = checkins.first;
+        if (_latestCheckin == null || _latestCheckin!.id != latest.id) {
+          setState(() => _latestCheckin = latest);
+          _showSnack('${latest.icon} ${latest.name}: "${latest.message}"');
+        }
+      }
     } catch (_) {}
   }
 
@@ -177,14 +218,52 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (!mounted) return;
       setState(() => _family = list);
 
-      // Jika sedang dalam mode Auto-Follow seseorang, kamera otomatis mengikuti posisi barunya
+      // Auto-Follow pergerakan keluarga
       if (_followingUserId != null) {
         final followed = _family.where((f) => f.userId == _followingUserId).firstOrNull;
         if (followed != null) {
           _animateTo(LatLng(followed.lat, followed.lng), zoom: 16);
         }
       }
+
+      // Deteksi Geofencing & Peringatan Baterai Lemah Otomatis
+      _checkGeofencingAndBatteryAlerts(list);
     } catch (_) {}
+  }
+
+  void _checkGeofencingAndBatteryAlerts(List<FamilyMemberLocation> members) {
+    const distCalc = Distance();
+
+    for (final m in members) {
+      // 1. Peringatan Baterai Lemah
+      if (m.battery != null && m.battery! <= 15 && !_lowBatteryAlertedUsers.contains(m.userId)) {
+        _lowBatteryAlertedUsers.add(m.userId);
+        _showSnack('⚠️ Baterai HP ${m.name} tersisa ${m.battery}%, ingatkan untuk isi daya 🔌');
+      } else if (m.battery != null && m.battery! > 20) {
+        _lowBatteryAlertedUsers.remove(m.userId);
+      }
+
+      // 2. Geofencing Tempat Favorit
+      final mPos = LatLng(m.lat, m.lng);
+      String? currentZone;
+
+      for (final p in _places) {
+        final d = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
+        if (d <= p.radius) {
+          currentZone = p.name;
+          break;
+        }
+      }
+
+      final previousZone = _lastKnownGeofenceZone[m.userId];
+      if (currentZone != null && currentZone != previousZone) {
+        _lastKnownGeofenceZone[m.userId] = currentZone;
+        _showSnack('🏡 ${m.name} sudah tiba di $currentZone');
+      } else if (currentZone == null && previousZone != null) {
+        _lastKnownGeofenceZone.remove(m.userId);
+        _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
+      }
+    }
   }
 
   /// Kirim posisi ke Supabase HANYA saat sharing ON
@@ -311,7 +390,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       ..showSnackBar(SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating));
   }
 
-  // --- SOS Emergency Dialog & Trigger ---
+  // --- SOS Emergency Dialog ---
   Future<void> _showSosConfirmation() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -362,6 +441,207 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     }
   }
 
+  // --- Quick Check-in Dialog ---
+  void _showQuickCheckinModal() {
+    final presets = [
+      {'icon': '🏡', 'text': 'Aku sudah sampai ya!'},
+      {'icon': '🚗', 'text': 'Sedang dalam perjalanan pulang'},
+      {'icon': '☕', 'text': 'Lagi istirahat makan/minum sebentar'},
+      {'icon': '🛵', 'text': 'Tolong jemput sekarang ya!'},
+      {'icon': '⏳', 'text': 'Tunggu sebentar lagi ya'},
+      {'icon': '🛒', 'text': 'Sedang belanja kebutuhan'},
+    ];
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(FamRadius.sheet)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20, right: 20, top: 20,
+          bottom: MediaQuery.of(ctx).padding.bottom + 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Row(
+              children: [
+                Icon(Icons.mark_chat_unread_rounded, color: FamColors.primary),
+                SizedBox(width: 8),
+                Text('Kirim Kabar Kilat (1-Ketukan)', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+              ],
+            ),
+            const SizedBox(height: 6),
+            const Text('Pilih pesan cepat untuk langsung disiarkan ke HP keluarga:', style: TextStyle(fontSize: 12.5, color: FamColors.muted)),
+            const SizedBox(height: 14),
+            ...presets.map((p) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.03),
+                borderRadius: BorderRadius.circular(FamRadius.card),
+                border: Border.all(color: Colors.black12),
+              ),
+              child: ListTile(
+                leading: Text(p['icon']!, style: const TextStyle(fontSize: 24)),
+                title: Text(p['text']!, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                trailing: const Icon(Icons.send_rounded, color: FamColors.primary, size: 20),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  if (_myPosition == null) await _focusMe();
+                  if (_myPosition != null) {
+                    try {
+                      await SupabaseService.sendQuickCheckin(
+                        message: p['text']!,
+                        icon: p['icon']!,
+                        lat: _myPosition!.latitude,
+                        lng: _myPosition!.longitude,
+                      );
+                      _showSnack('Pesan kilat terkirim: "${p['text']}" 🎉');
+                    } catch (e) {
+                      _showSnack('Gagal kirim kabar: $e');
+                    }
+                  }
+                },
+              ),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Place / Geofencing Creator Dialog ---
+  Future<void> _showAddPlaceDialog() async {
+    final nameCtrl = TextEditingController();
+    String selectedIcon = '🏠';
+    double radius = 150.0;
+
+    final icons = ['🏠', '🏢', '🏫', '🛒', '🕌', '🏥', '🏖️', '☕'];
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDlgState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.card)),
+          title: const Text('➕ Tambah Zona Aman (Geofence)', style: TextStyle(fontWeight: FontWeight.w800)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Tandai titik penting. Anda akan menerima notifikasi otomatis saat keluarga tiba atau meninggalkan tempat ini:',
+                style: TextStyle(fontSize: 12.5, color: FamColors.muted),
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                controller: nameCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Nama Tempat (misal: Rumah, Kantor)',
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text('Pilih Ikon:', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                children: icons.map((ic) => GestureDetector(
+                  onTap: () => setDlgState(() => selectedIcon = ic),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: selectedIcon == ic ? FamColors.primary.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: selectedIcon == ic ? FamColors.primary : Colors.transparent, width: 2),
+                    ),
+                    child: Text(ic, style: const TextStyle(fontSize: 20)),
+                  ),
+                )).toList(),
+              ),
+              const SizedBox(height: 14),
+              Text('Radius Geofence: ${radius.round()} meter', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700)),
+              Slider(
+                value: radius,
+                min: 50, max: 500, divisions: 9,
+                activeColor: FamColors.primary,
+                onChanged: (v) => setDlgState(() => radius = v),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Batal'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: FamColors.primary),
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                Navigator.pop(ctx);
+                if (_myPosition == null) await _focusMe();
+                if (_myPosition != null) {
+                  try {
+                    await SupabaseService.createPlace(
+                      name: name,
+                      icon: selectedIcon,
+                      lat: _myPosition!.latitude,
+                      lng: _myPosition!.longitude,
+                      radius: radius,
+                    );
+                    _refreshPlaces();
+                    _showSnack('Zona aman "$name" berhasil disimpan! 🏡');
+                  } catch (e) {
+                    _showSnack('Gagal menyimpan zona: $e');
+                  }
+                }
+              },
+              child: const Text('Simpan Zona'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- Load Location History Breadcrumb Trail ---
+  Future<void> _toggleTrailForUser(String userId, String name) async {
+    if (_trailUserId == userId && _activeRouteTrail.isNotEmpty) {
+      setState(() {
+        _activeRouteTrail = [];
+        _trailUserId = null;
+      });
+      _showSnack('Jejak rute disembunyikan');
+      return;
+    }
+
+    try {
+      final trail = await SupabaseService.getLocationHistoryToday(userId);
+      if (!mounted) return;
+      if (trail.isEmpty) {
+        _showSnack('Belum ada rekam jejak perjalanan hari ini');
+        return;
+      }
+      setState(() {
+        _activeRouteTrail = trail;
+        _trailUserId = userId;
+      });
+      _showSnack('Menampilkan ${trail.length} titik jejak perjalanan $name 📜');
+    } catch (e) {
+      _showSnack('Gagal memuat jejak: $e');
+    }
+  }
+
   void _showLayerPicker() {
     showModalBottomSheet(
       context: context,
@@ -395,19 +675,26 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                   icon: Icons.map_outlined,
                   type: MapLayerType.normal,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 _buildLayerOption(
                   title: 'Satelit',
                   subtitle: 'Foto Asli',
                   icon: Icons.satellite_alt_rounded,
                   type: MapLayerType.satellite,
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 _buildLayerOption(
                   title: 'Terrain',
                   subtitle: 'Kontur',
                   icon: Icons.terrain_rounded,
                   type: MapLayerType.terrain,
+                ),
+                const SizedBox(width: 8),
+                _buildLayerOption(
+                  title: 'Malam',
+                  subtitle: 'Dark Mode',
+                  icon: Icons.dark_mode_rounded,
+                  type: MapLayerType.dark,
                 ),
               ],
             ),
@@ -431,7 +718,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           Navigator.pop(context);
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
           decoration: BoxDecoration(
             color: isSelected ? FamColors.primary.withValues(alpha: 0.1) : Colors.black.withValues(alpha: 0.03),
             borderRadius: BorderRadius.circular(FamRadius.card),
@@ -442,10 +729,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
           child: Column(
             children: [
-              Icon(icon, color: isSelected ? FamColors.primary : FamColors.muted, size: 28),
-              const SizedBox(height: 8),
-              Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13, color: isSelected ? FamColors.primary : FamColors.textDark)),
-              Text(subtitle, style: const TextStyle(fontSize: 11, color: FamColors.muted)),
+              Icon(icon, color: isSelected ? FamColors.primary : FamColors.muted, size: 24),
+              const SizedBox(height: 6),
+              Text(title, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12, color: isSelected ? FamColors.primary : FamColors.textDark)),
+              Text(subtitle, style: const TextStyle(fontSize: 10, color: FamColors.muted)),
             ],
           ),
         ),
@@ -461,9 +748,21 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       case MapLayerType.terrain:
         // Google Terrain (Kontur Topografi)
         return 'https://mt{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}';
+      case MapLayerType.dark:
+        // Carto Dark Matter (Peta Mode Malam AMOLED)
+        return 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png';
       case MapLayerType.normal:
         // Google Road Map
         return 'https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    }
+  }
+
+  List<String> _getTileSubdomains() {
+    switch (_currentLayer) {
+      case MapLayerType.dark:
+        return const ['a', 'b', 'c', 'd'];
+      default:
+        return const ['0', '1', '2', '3'];
     }
   }
 
@@ -538,17 +837,45 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             children: [
               TileLayer(
                 urlTemplate: _getTileUrl(),
-                subdomains: const ['0', '1', '2', '3'],
+                subdomains: _getTileSubdomains(),
                 userAgentPackageName: 'eu.awanda.famloc',
                 maxZoom: 20,
                 tileBuilder: (context, tileWidget, tile) {
                   return Container(
-                    color: const Color(0xFFE8ECEF),
+                    color: _currentLayer == MapLayerType.dark ? const Color(0xFF1E1E1E) : const Color(0xFFE8ECEF),
                     child: tileWidget,
                   );
                 },
               ),
-              MarkerLayer(markers: _buildMarkers()),
+              // 1. Layer Lingkaran Geofencing Tempat Favorit
+              CircleLayer(
+                circles: _places.map((p) => CircleMarker(
+                  point: LatLng(p.lat, p.lng),
+                  radius: p.radius,
+                  useRadiusInMeter: true,
+                  color: FamColors.primary.withValues(alpha: 0.15),
+                  borderColor: FamColors.primary.withValues(alpha: 0.7),
+                  borderStrokeWidth: 2,
+                )).toList(),
+              ),
+              // 2. Layer Rekam Jejak Rute (Polyline Trail)
+              if (_activeRouteTrail.isNotEmpty)
+                PolylineLayer(
+                  polylines: [
+                    Polyline(
+                      points: _activeRouteTrail,
+                      strokeWidth: 4.5,
+                      color: Colors.blueAccent.withValues(alpha: 0.85),
+                      borderColor: Colors.white,
+                      borderStrokeWidth: 1.5,
+                    ),
+                  ],
+                ),
+              // 3. Layer Markers (Posisi Sendiri, Keluarga, & Ikon Tempat)
+              MarkerLayer(markers: [
+                ..._buildPlaceMarkers(),
+                ..._buildMarkers(),
+              ]),
             ],
           ),
           const Positioned(
@@ -659,7 +986,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Tombol SOS Darurat Merah
+          // 1. Tombol SOS Darurat Merah
           FloatingActionButton.small(
             heroTag: 'sos_btn',
             backgroundColor: Colors.red.shade600,
@@ -670,7 +997,18 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
           const SizedBox(height: 8),
 
-          // Tombol Layer Switcher (Normal/Satelit/Terrain)
+          // 2. Tombol Kabar Kilat (Quick Check-in)
+          FloatingActionButton.small(
+            heroTag: 'checkin_btn',
+            backgroundColor: Colors.amber.shade700,
+            foregroundColor: Colors.white,
+            tooltip: 'Kabar Kilat',
+            onPressed: _showQuickCheckinModal,
+            child: const Icon(Icons.mark_chat_unread_rounded, size: 19),
+          ),
+          const SizedBox(height: 8),
+
+          // 3. Tombol Layer Switcher (Normal/Satelit/Terrain/Malam)
           FloatingActionButton.small(
             heroTag: 'layer_btn',
             backgroundColor: Colors.white,
@@ -681,7 +1019,18 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           ),
           const SizedBox(height: 8),
 
-          // Tombol Pilih Keluarga
+          // 4. Tombol Zona Aman / Tambah Tempat Geofence
+          FloatingActionButton.small(
+            heroTag: 'place_btn',
+            backgroundColor: Colors.white,
+            foregroundColor: FamColors.primary,
+            tooltip: 'Tambah Zona Aman',
+            onPressed: _showAddPlaceDialog,
+            child: const Icon(Icons.add_location_alt_rounded),
+          ),
+          const SizedBox(height: 8),
+
+          // 5. Tombol Pilih Keluarga
           if (_family.isNotEmpty) ...[
             FloatingActionButton.small(
               heroTag: 'focus_family',
@@ -694,7 +1043,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             const SizedBox(height: 8),
           ],
 
-          // Tombol Posisiku
+          // 6. Tombol Posisiku
           FloatingActionButton.small(
             heroTag: 'focus_me',
             backgroundColor: Colors.white,
@@ -776,6 +1125,39 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         ],
       ),
     );
+  }
+
+  List<Marker> _buildPlaceMarkers() {
+    return _places.map((p) => Marker(
+      width: 100, height: 60,
+      point: LatLng(p.lat, p.lng),
+      child: GestureDetector(
+        onTap: () {
+          _showSnack('📍 Zona Aman: ${p.name} (Radius ${p.radius.round()}m)');
+        },
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(FamRadius.pill),
+                boxShadow: FamColors.softShadow(opacity: 0.1),
+                border: Border.all(color: FamColors.primary, width: 1.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(p.icon, style: const TextStyle(fontSize: 14)),
+                  const SizedBox(width: 4),
+                  Text(p.name, style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    )).toList();
   }
 
   List<Marker> _buildMarkers() {
@@ -927,6 +1309,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         member: f,
         myPosition: _myPosition,
         onFocus: () => _focusMember(f),
+        onToggleTrail: () => _toggleTrailForUser(f.userId, f.name),
+        isTrailActive: _trailUserId == f.userId && _activeRouteTrail.isNotEmpty,
       ),
     );
   }
@@ -1124,6 +1508,8 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     _stopLocationStream();
     _realtimeSubscription?.cancel();
     _sosSubscription?.cancel();
+    _placesSubscription?.cancel();
+    _checkinSubscription?.cancel();
     _pushTimer?.cancel();
     _moveAnim?.dispose();
     _mapController.dispose();
@@ -1165,11 +1551,15 @@ class _FamilyDetailSheet extends StatelessWidget {
   final FamilyMemberLocation member;
   final LatLng? myPosition;
   final VoidCallback onFocus;
+  final VoidCallback onToggleTrail;
+  final bool isTrailActive;
 
   const _FamilyDetailSheet({
     required this.member,
     required this.myPosition,
     required this.onFocus,
+    required this.onToggleTrail,
+    required this.isTrailActive,
   });
 
   String _timeAgo(DateTime t) {
@@ -1289,7 +1679,7 @@ class _FamilyDetailSheet extends StatelessWidget {
           ),
           const SizedBox(height: 20),
 
-          // Tombol Aksi Utama: Fokus & Navigasi Google Maps
+          // Tombol Aksi Utama: Fokus, Navigasi Google Maps, & Jejak Hari Ini
           Row(
             children: [
               Expanded(
@@ -1302,7 +1692,7 @@ class _FamilyDetailSheet extends StatelessWidget {
                   },
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 flex: 2,
                 child: FilledButton.icon(
@@ -1321,6 +1711,23 @@ class _FamilyDetailSheet extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+              side: BorderSide(color: isTrailActive ? Colors.blueAccent : Colors.black12, width: isTrailActive ? 2 : 1),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              onToggleTrail();
+            },
+            icon: Icon(isTrailActive ? Icons.route_rounded : Icons.timeline_rounded, color: isTrailActive ? Colors.blueAccent : FamColors.textDark, size: 18),
+            label: Text(
+              isTrailActive ? 'Sembunyikan Jejak Rute Hari Ini' : '📜 Lihat Jejak Rute Hari Ini',
+              style: TextStyle(color: isTrailActive ? Colors.blueAccent : FamColors.textDark, fontWeight: FontWeight.w700, fontSize: 13),
+            ),
           ),
         ],
       ),
