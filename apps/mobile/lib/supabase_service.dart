@@ -39,6 +39,7 @@ class FamilyMemberLocation {
   final double lng;
   final double? accuracy;
   final double? heading;
+  final double? speed; // in km/h
   final int? battery;
   final bool isMocked;
   final DateTime updatedAt;
@@ -51,6 +52,7 @@ class FamilyMemberLocation {
     required this.lng,
     this.accuracy,
     this.heading,
+    this.speed,
     this.battery,
     required this.isMocked,
     required this.updatedAt,
@@ -66,9 +68,49 @@ class FamilyMemberLocation {
       lng: (map['lng'] as num).toDouble(),
       accuracy: map['accuracy'] == null ? null : (map['accuracy'] as num).toDouble(),
       heading: map['heading'] == null ? null : (map['heading'] as num).toDouble(),
+      speed: map['speed'] == null ? null : (map['speed'] as num).toDouble(),
       battery: map['battery'] == null ? null : (map['battery'] as num).toInt(),
       isMocked: map['is_mocked'] == true,
       updatedAt: map['updated_at'] != null ? DateTime.parse(map['updated_at']) : DateTime.now(),
+    );
+  }
+}
+
+class SosAlert {
+  final String id;
+  final String userId;
+  final String name;
+  final String? avatarUrl;
+  final double lat;
+  final double lng;
+  final int? battery;
+  final bool isActive;
+  final DateTime createdAt;
+
+  SosAlert({
+    required this.id,
+    required this.userId,
+    required this.name,
+    this.avatarUrl,
+    required this.lat,
+    required this.lng,
+    this.battery,
+    required this.isActive,
+    required this.createdAt,
+  });
+
+  factory SosAlert.fromMap(Map<String, dynamic> map) {
+    final profile = map['profiles'] as Map<String, dynamic>?;
+    return SosAlert(
+      id: map['id'] ?? '',
+      userId: map['user_id'] ?? '',
+      name: profile?['name'] ?? 'Anggota Keluarga',
+      avatarUrl: profile?['avatar_url'],
+      lat: (map['lat'] as num).toDouble(),
+      lng: (map['lng'] as num).toDouble(),
+      battery: map['battery'] == null ? null : (map['battery'] as num).toInt(),
+      isActive: map['is_active'] == true,
+      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
     );
   }
 }
@@ -147,7 +189,7 @@ class SupabaseService {
 
     return UserProfile(
       id: user.id,
-      name: user.userMetadata?['name'] ?? user.email?.split('@').first ?? 'Saya',
+      name: user.userMetadata?['name'] ?? 'Saya',
       email: user.email ?? '',
       sharingOn: true,
     );
@@ -254,6 +296,7 @@ class SupabaseService {
     required double lng,
     double? accuracy,
     double? heading,
+    double? speed,
     int? battery,
     bool isMocked = false,
   }) async {
@@ -266,6 +309,7 @@ class SupabaseService {
       'lng': lng,
       'accuracy': accuracy,
       'heading': heading,
+      'speed': speed,
       'battery': battery,
       'is_mocked': isMocked,
       'updated_at': DateTime.now().toIso8601String(),
@@ -276,11 +320,9 @@ class SupabaseService {
     final myId = currentUser?.id;
     if (myId == null) return [];
 
-    // Ambil daftar teman yang terhubung
     final friends = await getFriends();
     final friendIds = friends.map((f) => f.id).toList();
 
-    // Query lokasi
     final res = await client
         .from('user_locations')
         .select('*, profiles(name, avatar_url, sharing_on)');
@@ -291,7 +333,6 @@ class SupabaseService {
       final sharingOn = profile?['sharing_on'] ?? true;
       final rowUserId = row['user_id'];
 
-      // Tampilkan jika sharing aktif, bukan diri sendiri, dan (jika ada teman terdaftar) masuk dalam daftar teman
       if (sharingOn && rowUserId != myId) {
         if (friendIds.isEmpty || friendIds.contains(rowUserId)) {
           list.add(FamilyMemberLocation.fromMap(row));
@@ -304,5 +345,59 @@ class SupabaseService {
   /// Listen realtime stream Postgres Changes via WebSocket
   static Stream<List<Map<String, dynamic>>> streamLocations() {
     return client.from('user_locations').stream(primaryKey: ['user_id']);
+  }
+
+  // ---- SOS Emergency Operations ----
+  static Future<void> triggerSos({
+    required double lat,
+    required double lng,
+    int? battery,
+  }) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client.from('sos_alerts').insert({
+      'user_id': user.id,
+      'lat': lat,
+      'lng': lng,
+      'battery': battery,
+      'is_active': true,
+    });
+  }
+
+  static Future<void> cancelSos() async {
+    final user = currentUser;
+    if (user == null) return;
+    await client
+        .from('sos_alerts')
+        .update({'is_active': false})
+        .eq('user_id', user.id);
+  }
+
+  static Future<List<SosAlert>> getActiveSosAlerts() async {
+    final myId = currentUser?.id;
+    if (myId == null) return [];
+    final friends = await getFriends();
+    final friendIds = friends.map((f) => f.id).toList();
+
+    final res = await client
+        .from('sos_alerts')
+        .select('*, profiles(name, avatar_url)')
+        .eq('is_active', true)
+        .order('created_at', ascending: false);
+
+    final list = <SosAlert>[];
+    for (final row in (res as List)) {
+      final uid = row['user_id'] as String;
+      if (uid != myId) {
+        if (friendIds.isEmpty || friendIds.contains(uid)) {
+          list.add(SosAlert.fromMap(row));
+        }
+      }
+    }
+    return list;
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamSosAlerts() {
+    return client.from('sos_alerts').stream(primaryKey: ['id']);
   }
 }
