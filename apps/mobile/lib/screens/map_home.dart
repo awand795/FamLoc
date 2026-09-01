@@ -1314,7 +1314,7 @@ class _FamilyDetailSheet extends StatelessWidget {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
                   ),
                   onPressed: () {
-                    MapHomeScreenState.launchNavigation(member.lat, member.lng);
+                    _MapHomeScreenState.launchNavigation(member.lat, member.lng);
                   },
                   icon: const Icon(Icons.navigation_rounded, size: 18),
                   label: const Text('Rute Maps', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
@@ -1326,9 +1326,4 @@ class _FamilyDetailSheet extends StatelessWidget {
       ),
     );
   }
-}
-
-extension on _MapHomeScreenState {
-  static void launchNavigation(double lat, double lng) =>
-      _MapHomeScreenState.launchNavigation(lat, lng);
 }
