@@ -293,10 +293,16 @@ class _MapHomeScreenState extends State<MapHomeScreen>
             icon: const Icon(Icons.people_alt_rounded),
             tooltip: 'Keluargaku & Teman',
             onPressed: () async {
-              await Navigator.of(context).push(
+              final selectedUserId = await Navigator.of(context).push<String>(
                 MaterialPageRoute(builder: (_) => const FamilyScreen()),
               );
-              _refreshLocations();
+              await _refreshLocations();
+              if (selectedUserId != null) {
+                final target = _family.where((f) => f.userId == selectedUserId).firstOrNull;
+                if (target != null) {
+                  _focusMember(target);
+                }
+              }
             },
           ),
           IconButton(
@@ -445,8 +451,16 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               heroTag: 'focus_family',
               backgroundColor: FamColors.primary,
               foregroundColor: Colors.white,
-              tooltip: 'Fokus ke Keluarga',
-              onPressed: () => _focusMember(_family.first),
+              tooltip: 'Fokus & Ikuti Keluarga',
+              onPressed: () {
+                if (_family.length == 1) {
+                  _focusMember(_family.first);
+                } else {
+                  final currentIndex = _family.indexWhere((f) => f.userId == _followingUserId);
+                  final nextIndex = (currentIndex + 1) % _family.length;
+                  _focusMember(_family[nextIndex]);
+                }
+              },
               child: const Icon(Icons.people_alt_rounded),
             ),
             const SizedBox(height: 8),

@@ -187,44 +187,57 @@ class _FamilyScreenState extends State<FamilyScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (ctx, idx) {
                     final f = _friends[idx];
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
+                    return Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () => Navigator.pop(context, f.id),
                         borderRadius: BorderRadius.circular(FamRadius.card),
-                        boxShadow: FamColors.softShadow(opacity: 0.08),
-                      ),
-                      child: Row(
-                        children: [
-                          f.avatarUrl != null
-                              ? CircleAvatar(
-                                  radius: 24,
-                                  backgroundImage: NetworkImage(f.avatarUrl!),
-                                )
-                              : InitialAvatar(name: f.name, radius: 24),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  f.name,
-                                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  f.email,
-                                  style: const TextStyle(fontSize: 12.5, color: FamColors.muted),
-                                ),
-                              ],
-                            ),
+                        child: Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(FamRadius.card),
+                            boxShadow: FamColors.softShadow(opacity: 0.08),
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.person_remove_rounded, color: FamColors.danger),
-                            tooltip: 'Hapus Teman',
-                            onPressed: () => _confirmRemoveFriend(f),
+                          child: Row(
+                            children: [
+                              f.avatarUrl != null
+                                  ? CircleAvatar(
+                                      radius: 24,
+                                      backgroundImage: NetworkImage(f.avatarUrl!),
+                                    )
+                                  : InitialAvatar(name: f.name, radius: 24),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      f.name,
+                                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.my_location_rounded, size: 12, color: FamColors.primary),
+                                        const SizedBox(width: 4),
+                                        Text(
+                                          'Ketuk untuk lacak di peta',
+                                          style: TextStyle(fontSize: 12, color: FamColors.primary.withValues(alpha: 0.8), fontWeight: FontWeight.w600),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.person_remove_rounded, color: FamColors.danger),
+                                tooltip: 'Hapus Teman',
+                                onPressed: () => _confirmRemoveFriend(f),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     );
                   },
