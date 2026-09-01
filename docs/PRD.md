@@ -40,11 +40,15 @@
 
 ### 3.2 Geofencing, Riwayat, & Komunikasi Cepat
 * **Zona Aman (Geofencing Rumah & Kantor)**: Tandai tempat favorit dengan radius kustom dan dapatkan notifikasi otomatis saat tiba/pergi.
+* **Deteksi Arah & Estimasi Waktu Tiba Cerdas (ETA)**: Menghitung secara dinamis arah perjalanan menuju Rumah/Kost/Kantor dan estimasi menit sampai.
 * **Rekam Jejak Rute Hari Ini**: Menggambar garis rute perjalanan hari ini (breadcrumb trail).
 * **Kabar Kilat (Quick Check-in)**: Siarkan pesan instan 1-ketukan ke HP keluarga.
+* **Pintasan Langsung Telepon & WhatsApp**: Tombol 1-ketukan untuk langsung memanggil atau membuka obrolan chat WhatsApp.
 
 ### 3.3 Keamanan & Darurat
 * **Sinyal Darurat SOS**: Tombol SOS yang memunculkan banner darurat di HP keluarga dengan opsi navigasi kilat dan tombol hubungi.
+* **Peringatan Melaju Cepat (Speed Limit Warning)**: Peringatan otomatis di kedua HP saat kendaraan melaju di atas kecepatan aman ($> 80$ km/jam).
+* **Fitur Deringkan HP / Cari HP Lupa Taruh**: Membunyikan dering kencang di HP keluarga untuk menemukan perangkat yang terselip.
 * **Deteksi Fake GPS**: Mendeteksi status `is_mocked` dari hardware GPS.
 * **Privasi Penuh (Sharing Toggle)**: Saklar on/off untuk berhenti membagikan posisi kapan saja.
 

@@ -18,6 +18,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   UserProfile? _me;
   final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
 
   @override
   void initState() {
@@ -30,7 +31,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (!mounted) return;
     setState(() {
       _me = profile;
-      if (profile != null) _nameCtrl.text = profile.name;
+      if (profile != null) {
+        _nameCtrl.text = profile.name;
+        _phoneCtrl.text = profile.phone ?? '';
+      }
     });
   }
 
@@ -44,6 +48,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           behavior: SnackBarBehavior.floating,
           content: Text('Nama berhasil disimpan ✅')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
+    }
+  }
+
+  Future<void> _savePhone() async {
+    final phone = _phoneCtrl.text.trim();
+    try {
+      await SupabaseService.updatePhone(phone);
+      await _loadProfile();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          behavior: SnackBarBehavior.floating,
+          content: Text('Nomor HP berhasil disimpan ✅')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Gagal: $e')));
@@ -186,6 +205,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               onPressed: () {
                                 Navigator.pop(ctx);
                                 _saveName();
+                              },
+                              child: const Text('Simpan'),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                    ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.phone_rounded),
+                    title: const Text('Nomor HP / WhatsApp'),
+                    subtitle: Text(_me?.phone != null && _me!.phone!.isNotEmpty ? _me!.phone! : 'Belum diisi (opsional)'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          title: const Text('Nomor HP / WhatsApp'),
+                          content: TextField(
+                            controller: _phoneCtrl,
+                            keyboardType: TextInputType.phone,
+                            decoration: const InputDecoration(
+                              labelText: 'Nomor HP (misal: 08123456789)',
+                              hintText: '08123456789',
+                            ),
+                          ),
+                          actions: [
+                            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
+                            FilledButton(
+                              style: FilledButton.styleFrom(backgroundColor: FamColors.primary),
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                _savePhone();
                               },
                               child: const Text('Simpan'),
                             ),

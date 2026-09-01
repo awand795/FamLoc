@@ -30,6 +30,7 @@ description: Tech stack dan arsitektur aplikasi FamLoc (live location keluarga).
 5. **`public.places`**: `id (UUID PK)`, `user_id (UUID)`, `name (TEXT)`, `icon (TEXT)`, `lat (DOUBLE)`, `lng (DOUBLE)`, `radius (DOUBLE)`, `created_at (TIMESTAMPTZ)`
 6. **`public.location_history`**: `id (UUID PK)`, `user_id (UUID)`, `lat (DOUBLE)`, `lng (DOUBLE)`, `speed (DOUBLE)`, `created_at (TIMESTAMPTZ)`
 7. **`public.quick_checkins`**: `id (UUID PK)`, `user_id (UUID)`, `message (TEXT)`, `icon (TEXT)`, `lat (DOUBLE)`, `lng (DOUBLE)`, `created_at (TIMESTAMPTZ)`
+8. **`public.ring_alerts`**: `id (UUID PK)`, `target_user_id (UUID)`, `sender_name (TEXT)`, `is_active (BOOLEAN)`, `created_at (TIMESTAMPTZ)`
 
 ## Aturan Arsitektur
 

@@ -189,4 +189,75 @@ class NotificationService {
       details,
     );
   }
+
+  /// 🚗 Peringatan Melaju Cepat (Speed Limit Warning)
+  static Future<void> showSpeedNotification({
+    required String name,
+    required int speed,
+    bool isSelf = false,
+  }) async {
+    final title = isSelf
+        ? '⚠️ Kecepatan Anda $speed km/jam'
+        : '🚗 $name Sedang Melaju Cepat ($speed km/jam)';
+
+    final body = isSelf
+        ? 'Mohon berhati-hati dan kurangi kecepatan demi keselamatan bersama.'
+        : '$name terpantau melaju dengan kecepatan $speed km/jam di jalan.';
+
+    final androidDetails = AndroidNotificationDetails(
+      'famloc_speed',
+      'Peringatan Kecepatan',
+      channelDescription: 'Notifikasi saat kendaraan melaju di atas batas kecepatan',
+      importance: Importance.high,
+      priority: Priority.high,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 250, 150, 250]),
+      visibility: NotificationVisibility.public,
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+    );
+
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+    await _notificationsPlugin.show(777, title, body, details);
+  }
+
+  /// 🔊 Deringkan HP / Cari HP Lupa Taruh
+  static Future<void> showRingDeviceNotification({
+    required String senderName,
+  }) async {
+    final androidDetails = AndroidNotificationDetails(
+      'famloc_ring',
+      'Panggilan Cari HP',
+      channelDescription: 'Dering kencang untuk menemukan HP yang lupa ditaruh',
+      importance: Importance.max,
+      priority: Priority.max,
+      playSound: true,
+      enableVibration: true,
+      vibrationPattern: Int64List.fromList([0, 800, 300, 800, 300, 800, 300, 800]),
+      visibility: NotificationVisibility.public,
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.alarm,
+    );
+
+    const iosDetails = DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+      presentBadge: true,
+      interruptionLevel: InterruptionLevel.critical,
+    );
+
+    final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
+
+    await _notificationsPlugin.show(
+      555,
+      '🔊 PANGGILAN CARI HP: $senderName',
+      '$senderName sedang membunyikan HP ini untuk menemukannya!',
+      details,
+    );
+  }
 }

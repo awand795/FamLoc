@@ -27,6 +27,14 @@
 - 🔋 **Live Battery Badge & Peringatan Otomatis**:
   - Persentase baterai HP keluarga tampil langsung di atas marker peta (`Mama 🔋 85%`).
   - Notifikasi otomatis saat baterai HP keluarga $\le 15\%$ agar segera diingatkan untuk mengecas.
+- ⏱️ **Deteksi Arah & Estimasi Waktu Tiba Cerdas (Dynamic ETA)**:
+  - Berdasarkan vektor pergerakan arah kompas dan penurunan jarak, aplikasi mendeteksi otomatis jika keluarga sedang melaju menuju *Rumah*, *Kost*, atau *Kantor*, lalu menghitung estimasi waktu tiba secara presisi (*"🚗 Menuju Rumah · Sisa 3.5 km · ETA ~6 mnt"*).
+- ⚠️ **Peringatan Melaju Cepat (Speed Limit Alert)**:
+  - Notifikasi otomatis di kedua HP saat kendaraan melaju di atas kecepatan aman ($> 80 \text{ km/jam}$) untuk menjaga keselamatan berkendara di jalan.
+- 📞 **Pintasan Langsung Telepon & Chat WhatsApp**:
+  - Tombol 1-ketukan untuk langsung menelepon nomor HP keluarga atau membuka obrolan pesan WhatsApp tanpa perlu mencari kontak secara manual.
+- 🔊 **Fitur Deringkan HP / Cari HP Lupa Taruh (Find My Device)**:
+  - Tombol untuk membunyikan HP keluarga dengan dering kencang terus-menerus selama 30 detik (meskipun HP disetel mode Hening / Silent) agar posisinya di rumah/kamar segera ditemukan.
 - 🔔 **Notifikasi Layar Kunci & Getar/Suara (Lock Screen Popups)**:
   - Notifikasi penting (Tiba/Keluar Zona, Sinyal Darurat SOS, Pesan Kabar Kilat, dan Peringatan Baterai Lemah) **otomatis menyala, berdering, bergetar, dan muncul di layar kunci HP** meskipun layar HP sedang mati/terkunci (menggunakan *Android High Importance Notification Channels*).
 - 🔒 **Pelacakan Latar Belakang Penuh (Android 14+ & Screen-Off WakeLock)**:

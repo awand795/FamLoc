@@ -10,6 +10,7 @@ class UserProfile {
   final String id;
   final String name;
   final String email;
+  final String? phone;
   final String? avatarUrl;
   final bool sharingOn;
 
@@ -17,6 +18,7 @@ class UserProfile {
     required this.id,
     required this.name,
     required this.email,
+    this.phone,
     this.avatarUrl,
     required this.sharingOn,
   });
@@ -26,6 +28,7 @@ class UserProfile {
       id: map['id'] ?? '',
       name: map['name'] ?? '',
       email: map['email'] ?? '',
+      phone: map['phone'],
       avatarUrl: map['avatar_url'],
       sharingOn: map['sharing_on'] == true,
     );
@@ -35,6 +38,7 @@ class UserProfile {
 class FamilyMemberLocation {
   final String userId;
   final String name;
+  final String? phone;
   final String? avatarUrl;
   final double lat;
   final double lng;
@@ -48,6 +52,7 @@ class FamilyMemberLocation {
   FamilyMemberLocation({
     required this.userId,
     required this.name,
+    this.phone,
     this.avatarUrl,
     required this.lat,
     required this.lng,
@@ -64,6 +69,7 @@ class FamilyMemberLocation {
     return FamilyMemberLocation(
       userId: map['user_id'] ?? '',
       name: profile?['name'] ?? fallbackName ?? 'Keluarga',
+      phone: profile?['phone'],
       avatarUrl: profile?['avatar_url'] ?? fallbackAvatar,
       lat: (map['lat'] as num).toDouble(),
       lng: (map['lng'] as num).toDouble(),
@@ -190,6 +196,32 @@ class QuickCheckin {
   }
 }
 
+class RingAlert {
+  final String id;
+  final String targetUserId;
+  final String senderName;
+  final bool isActive;
+  final DateTime createdAt;
+
+  RingAlert({
+    required this.id,
+    required this.targetUserId,
+    required this.senderName,
+    required this.isActive,
+    required this.createdAt,
+  });
+
+  factory RingAlert.fromMap(Map<String, dynamic> map) {
+    return RingAlert(
+      id: map['id'] ?? '',
+      targetUserId: map['target_user_id'] ?? '',
+      senderName: map['sender_name'] ?? 'Keluargamu',
+      isActive: map['is_active'] == true,
+      createdAt: map['created_at'] != null ? DateTime.parse(map['created_at']) : DateTime.now(),
+    );
+  }
+}
+
 class SupabaseService {
   static SupabaseClient get client => Supabase.instance.client;
 
@@ -280,6 +312,12 @@ class SupabaseService {
     final user = currentUser;
     if (user == null) return;
     await client.from('profiles').update({'name': name}).eq('id', user.id);
+  }
+
+  static Future<void> updatePhone(String phone) async {
+    final user = currentUser;
+    if (user == null) return;
+    await client.from('profiles').update({'phone': phone}).eq('id', user.id);
   }
 
   static Future<String?> uploadAvatar(List<int> bytes) async {
@@ -411,7 +449,7 @@ class SupabaseService {
 
     final res = await client
         .from('user_locations')
-        .select('*, profiles(name, avatar_url, sharing_on)');
+        .select('*, profiles(name, phone, avatar_url, sharing_on)');
 
     final list = <FamilyMemberLocation>[];
     for (final row in (res as List)) {
@@ -584,5 +622,41 @@ class SupabaseService {
 
   static Stream<List<Map<String, dynamic>>> streamQuickCheckins() {
     return client.from('quick_checkins').stream(primaryKey: ['id']);
+  }
+
+  // ---- Deringkan HP / Cari HP ----
+  static Future<void> triggerRingDevice({required String targetUserId}) async {
+    final user = currentUser;
+    if (user == null) return;
+    final myProfile = await getMyProfile();
+    await client.from('ring_alerts').insert({
+      'target_user_id': targetUserId,
+      'sender_name': myProfile?.name ?? 'Keluargamu',
+      'is_active': true,
+    });
+  }
+
+  static Future<void> cancelRingAlert(String id) async {
+    await client.from('ring_alerts').update({'is_active': false}).eq('id', id);
+  }
+
+  static Stream<List<Map<String, dynamic>>> streamRingAlerts() {
+    return client.from('ring_alerts').stream(primaryKey: ['id']);
+  }
+
+  static Future<List<RingAlert>> getActiveRingAlertsForMe() async {
+    final user = currentUser;
+    if (user == null) return [];
+    try {
+      final res = await client
+          .from('ring_alerts')
+          .select()
+          .eq('target_user_id', user.id)
+          .eq('is_active', true)
+          .order('created_at', ascending: false);
+      return (res as List).map((r) => RingAlert.fromMap(r)).toList();
+    } catch (_) {
+      return [];
+    }
   }
 }

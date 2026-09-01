@@ -38,6 +38,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   StreamSubscription? _sosSubscription;
   StreamSubscription? _placesSubscription;
   StreamSubscription? _checkinSubscription;
+  StreamSubscription? _ringSubscription;
   StreamSubscription<Position>? _positionStreamSub;
   AnimationController? _moveAnim;
   UserProfile? _me;
@@ -47,6 +48,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   List<LatLng> _activeRouteTrail = [];
   String? _trailUserId;
   QuickCheckin? _latestCheckin;
+  RingAlert? _activeRingAlert;
   LatLng? _myPosition;
   int? _myBattery;
   double? _mySpeed;
@@ -55,7 +57,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   Timer? _pushTimer;
   MapLayerType _currentLayer = MapLayerType.normal;
   final Set<String> _lowBatteryAlertedUsers = {};
+  final Set<String> _speedAlertedUsers = {};
+  DateTime? _lastSelfSpeedAlert;
   final Map<String, String> _lastKnownGeofenceZone = {}; // userId -> placeName
+  final Map<String, Map<String, double>> _previousPlaceDistances = {}; // userId -> {placeId: distance}
 
   static const jakarta = LatLng(-6.2088, 106.8456);
   final LatLng _center = jakarta;
@@ -82,6 +87,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     _refreshLocations();
     _refreshSosAlerts();
     _refreshPlaces();
+    _refreshRingAlerts();
     _focusMe(); // Update dengan GPS akurat saat satelit siap
 
     // Realtime Location Updates
@@ -102,6 +108,11 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     // Realtime Quick Check-ins
     _checkinSubscription = SupabaseService.streamQuickCheckins().listen((_) {
       _fetchLatestCheckin();
+    });
+
+    // Realtime Ring Alerts (Cari HP Lupa Taruh)
+    _ringSubscription = SupabaseService.streamRingAlerts().listen((_) {
+      _refreshRingAlerts();
     });
 
     // Interval stream lokasi sendiri tiap 5 detik
@@ -139,6 +150,64 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (!mounted) return;
       setState(() => _places = places);
     } catch (_) {}
+  }
+
+  Future<void> _refreshRingAlerts() async {
+    try {
+      final alerts = await SupabaseService.getActiveRingAlertsForMe();
+      if (!mounted) return;
+      if (alerts.isNotEmpty) {
+        final alert = alerts.first;
+        if (_activeRingAlert == null || _activeRingAlert!.id != alert.id) {
+          setState(() => _activeRingAlert = alert);
+          NotificationService.showRingDeviceNotification(senderName: alert.senderName);
+          _showLoudRingDialog(alert);
+        }
+      } else {
+        if (_activeRingAlert != null) {
+          setState(() => _activeRingAlert = null);
+        }
+      }
+    } catch (_) {}
+  }
+
+  void _showLoudRingDialog(RingAlert alert) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.card)),
+        backgroundColor: Colors.amber.shade50,
+        title: Row(
+          children: [
+            const Icon(Icons.volume_up_rounded, color: Colors.amber, size: 32),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                '🔊 Panggilan Cari HP!',
+                style: TextStyle(color: Colors.amber.shade900, fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          '${alert.senderName} sedang membunyikan HP ini agar posisinya dapat segera ditemukan.',
+          style: const TextStyle(fontSize: 14, height: 1.4),
+        ),
+        actions: [
+          FilledButton.icon(
+            style: FilledButton.styleFrom(backgroundColor: Colors.amber.shade800),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await SupabaseService.cancelRingAlert(alert.id);
+              setState(() => _activeRingAlert = null);
+            },
+            icon: const Icon(Icons.volume_off_rounded),
+            label: const Text('🔕 HENTIKAN DERING', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _fetchLatestCheckin() async {
@@ -202,6 +271,19 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
       final speedKmh = pos.speed > 0 ? (pos.speed * 3.6) : 0.0;
 
+      // Peringatan Kecepatan Sendiri (Driver Speed Alert > 80 km/jam)
+      if (speedKmh >= 80) {
+        final now = DateTime.now();
+        if (_lastSelfSpeedAlert == null || now.difference(_lastSelfSpeedAlert!).inMinutes >= 3) {
+          _lastSelfSpeedAlert = now;
+          NotificationService.showSpeedNotification(
+            name: _me?.name ?? 'Saya',
+            speed: speedKmh.round(),
+            isSelf: true,
+          );
+        }
+      }
+
       await SupabaseService.pushLocation(
         lat: pos.latitude,
         lng: pos.longitude,
@@ -241,12 +323,12 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         }
       }
 
-      // Deteksi Geofencing & Peringatan Baterai Lemah Otomatis
-      _checkGeofencingAndBatteryAlerts(list);
+      // Deteksi Geofencing, Peringatan Baterai Lemah, & Peringatan Kecepatan
+      _checkSmartSensors(list);
     } catch (_) {}
   }
 
-  void _checkGeofencingAndBatteryAlerts(List<FamilyMemberLocation> members) {
+  void _checkSmartSensors(List<FamilyMemberLocation> members) {
     const distCalc = Distance();
 
     for (final m in members) {
@@ -259,7 +341,19 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         _lowBatteryAlertedUsers.remove(m.userId);
       }
 
-      // 2. Geofencing Tempat Favorit
+      // 2. Peringatan Kecepatan Keluarga (> 80 km/jam)
+      if (m.speed != null && m.speed! >= 80 && !_speedAlertedUsers.contains(m.userId)) {
+        _speedAlertedUsers.add(m.userId);
+        NotificationService.showSpeedNotification(
+          name: m.name,
+          speed: m.speed!.round(),
+          isSelf: false,
+        );
+      } else if (m.speed != null && m.speed! < 70) {
+        _speedAlertedUsers.remove(m.userId);
+      }
+
+      // 3. Geofencing Tempat Favorit
       final mPos = LatLng(m.lat, m.lng);
       String? currentZone;
       String currentZoneIcon = '🏠';
@@ -292,7 +386,48 @@ class _MapHomeScreenState extends State<MapHomeScreen>
           isArriving: false,
         );
       }
+
+      // Simpan riwayat jarak ke setiap tempat untuk perhitungan vektor arah ETA
+      final userDistances = _previousPlaceDistances.putIfAbsent(m.userId, () => {});
+      for (final p in _places) {
+        userDistances[p.id] = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
+      }
     }
+  }
+
+  /// Hitung estimasi arah tujuan dan ETA cerdas untuk anggota keluarga
+  String? _calculateDestinationEta(FamilyMemberLocation m) {
+    if (m.speed == null || m.speed! < 12 || _places.isEmpty) return null;
+    const distCalc = Distance();
+    final mPos = LatLng(m.lat, m.lng);
+
+    PlaceZone? bestDestination;
+    double minDistance = double.infinity;
+
+    for (final p in _places) {
+      final curDist = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
+      // Jika berada di dalam radius tempat, berarti sudah sampai
+      if (curDist <= p.radius) return null;
+
+      // Cek apakah jarak ke tempat ini sedang berkurang (mendekat)
+      final prevDist = _previousPlaceDistances[m.userId]?[p.id];
+      final isGettingCloser = prevDist == null || curDist <= prevDist + 10;
+
+      if (isGettingCloser && curDist < minDistance && curDist < 30000) {
+        minDistance = curDist;
+        bestDestination = p;
+      }
+    }
+
+    if (bestDestination != null && minDistance < double.infinity) {
+      final speedKmh = m.speed!;
+      final distKm = minDistance / 1000.0;
+      final etaMinutes = (distKm / speedKmh * 60).round();
+      final distStr = distKm < 1 ? '${minDistance.round()} m' : '${distKm.toStringAsFixed(1)} km';
+      final etaText = etaMinutes <= 1 ? '~1 mnt' : '~$etaMinutes mnt';
+      return '${bestDestination.icon} Menuju ${bestDestination.name} · Sisa $distStr · ETA $etaText';
+    }
+    return null;
   }
 
   /// Kirim posisi ke Supabase HANYA saat sharing ON
@@ -575,7 +710,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               TextField(
                 controller: nameCtrl,
                 decoration: InputDecoration(
-                  labelText: 'Nama Tempat (misal: Rumah, Kantor)',
+                  labelText: 'Nama Tempat (misal: Rumah, Kost, Kantor)',
                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               ),
@@ -809,11 +944,34 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     } catch (_) {}
   }
 
+  static Future<void> launchCall(String? phone) async {
+    if (phone == null || phone.trim().isEmpty) return;
+    final url = Uri.parse('tel:${phone.trim()}');
+    try {
+      await launchUrl(url);
+    } catch (_) {}
+  }
+
+  static Future<void> launchWhatsApp(String? phone, String name) async {
+    if (phone == null || phone.trim().isEmpty) return;
+    var clean = phone.trim().replaceAll(RegExp(r'[^0-9]'), '');
+    if (clean.startsWith('0')) {
+      clean = '62${clean.substring(1)}';
+    }
+    final msg = Uri.encodeComponent('Halo $name, lagi di mana?');
+    final url = Uri.parse('https://wa.me/$clean?text=$msg');
+    try {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     final followedMember = _followingUserId != null
         ? _family.where((f) => f.userId == _followingUserId).firstOrNull
         : null;
+
+    final destinationEta = followedMember != null ? _calculateDestinationEta(followedMember) : null;
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -973,17 +1131,17 @@ class _MapHomeScreenState extends State<MapHomeScreen>
               ),
             ),
 
-          // Floating Pill saat Mode Auto-Follow Aktif
+          // Floating Pill saat Mode Auto-Follow Aktif (Lengkap dengan Deteksi Arah & ETA Cerdas)
           if (followedMember != null)
             Positioned(
               bottom: 24,
-              left: 20,
-              right: 20,
+              left: 16,
+              right: 16,
               child: Center(
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.85),
+                    color: Colors.black.withValues(alpha: 0.88),
                     borderRadius: BorderRadius.circular(FamRadius.pill),
                     boxShadow: FamColors.softShadow(opacity: 0.3),
                   ),
@@ -992,11 +1150,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                     children: [
                       const Icon(Icons.videocam_rounded, color: Colors.greenAccent, size: 18),
                       const SizedBox(width: 8),
-                      Text(
-                        'Mengikuti ${followedMember.name}',
-                        style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                      Flexible(
+                        child: Text(
+                          destinationEta ?? 'Mengikuti ${followedMember.name}',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(color: Colors.white, fontSize: 12.5, fontWeight: FontWeight.w700),
+                        ),
                       ),
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 10),
                       GestureDetector(
                         onTap: () => setState(() => _followingUserId = null),
                         child: Container(
@@ -1340,6 +1501,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         onFocus: () => _focusMember(f),
         onToggleTrail: () => _toggleTrailForUser(f.userId, f.name),
         isTrailActive: _trailUserId == f.userId && _activeRouteTrail.isNotEmpty,
+        onRingDevice: () async {
+          try {
+            await SupabaseService.triggerRingDevice(targetUserId: f.userId);
+            _showSnack('🔊 Sinyal dering dikirimkan ke HP ${f.name}!');
+          } catch (e) {
+            _showSnack('Gagal mengirim dering: $e');
+          }
+        },
       ),
     );
   }
@@ -1539,6 +1708,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     _sosSubscription?.cancel();
     _placesSubscription?.cancel();
     _checkinSubscription?.cancel();
+    _ringSubscription?.cancel();
     _pushTimer?.cancel();
     _moveAnim?.dispose();
     _mapController.dispose();
@@ -1581,6 +1751,7 @@ class _FamilyDetailSheet extends StatelessWidget {
   final LatLng? myPosition;
   final VoidCallback onFocus;
   final VoidCallback onToggleTrail;
+  final VoidCallback onRingDevice;
   final bool isTrailActive;
 
   const _FamilyDetailSheet({
@@ -1588,6 +1759,7 @@ class _FamilyDetailSheet extends StatelessWidget {
     required this.myPosition,
     required this.onFocus,
     required this.onToggleTrail,
+    required this.onRingDevice,
     required this.isTrailActive,
   });
 
@@ -1670,7 +1842,7 @@ class _FamilyDetailSheet extends StatelessWidget {
               BatteryIndicator(level: member.battery),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           Wrap(
             spacing: 8,
@@ -1706,9 +1878,64 @@ class _FamilyDetailSheet extends StatelessWidget {
                 ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Tombol Aksi Utama: Fokus, Navigasi Google Maps, & Jejak Hari Ini
+          // Pintasan Langsung: Telepon & WhatsApp
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.green.shade800,
+                    side: BorderSide(color: Colors.green.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+                  ),
+                  onPressed: () {
+                    _MapHomeScreenState.launchCall(member.phone);
+                  },
+                  icon: const Icon(Icons.phone_rounded, size: 18, color: Colors.green),
+                  label: const Text('Telepon', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFF128C7E),
+                    side: const BorderSide(color: Color(0xFF25D366)),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+                  ),
+                  onPressed: () {
+                    _MapHomeScreenState.launchWhatsApp(member.phone, member.name);
+                  },
+                  icon: const Icon(Icons.chat_bubble_rounded, size: 18, color: Color(0xFF25D366)),
+                  label: const Text('WhatsApp', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Tooltip(
+                message: 'Deringkan HP (Cari HP)',
+                child: OutlinedButton(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.amber.shade900,
+                    side: BorderSide(color: Colors.amber.shade300),
+                    padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.pill)),
+                  ),
+                  onPressed: () {
+                    Navigator.pop(context);
+                    onRingDevice();
+                  },
+                  child: const Icon(Icons.volume_up_rounded, size: 20, color: Colors.amber),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // Tombol Aksi Utama: Fokus & Navigasi Google Maps
           Row(
             children: [
               Expanded(
