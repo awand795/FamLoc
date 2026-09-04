@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../background_service.dart';
 import '../supabase_service.dart';
 import '../theme.dart';
 import 'map_home.dart';
@@ -35,6 +36,9 @@ class _AuthScreenState extends State<AuthScreen> {
         );
         if (res.user == null) throw Exception('Login gagal');
       }
+      try {
+        await initializeBackgroundService();
+      } catch (_) {}
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const MapHomeScreen()),

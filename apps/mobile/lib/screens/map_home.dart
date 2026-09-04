@@ -8,8 +8,11 @@ import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../background_service.dart';
 import '../supabase_service.dart';
-import '../background_task.dart';
 import '../notification_service.dart';
 import '../theme.dart';
 import 'family_screen.dart';
@@ -240,6 +243,9 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   Future<void> _startSharingIfOn() async {
     try {
       if (_me?.sharingOn == true) {
+        try {
+          await initializeBackgroundService();
+        } catch (_) {}
         _startLocationStream();
         await _pushMyLocation();
       }
@@ -505,13 +511,19 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       await SupabaseService.updateSharing(on);
       await _refreshProfile();
       _showSnack(on ? '📍 Lokasimu dibagikan ke keluarga' : 'Berbagi lokasi dimatikan');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('famloc_sharing_on', on);
       if (on) {
+        try {
+          await initializeBackgroundService();
+        } catch (_) {}
         _startLocationStream();
         await _pushMyLocation();
-        await startBackgroundSharing();
       } else {
+        try {
+          FlutterBackgroundService().invoke('stopService');
+        } catch (_) {}
         _stopLocationStream();
-        await stopBackgroundSharing();
       }
     } catch (e) {
       _showSnack(e.toString());
@@ -1182,6 +1194,20 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     if (speed < 7) return '🚶 Jalan kaki';
     if (speed < 20) return '🚲 ${speed.round()} km/jam';
     return '🚗 ${speed.round()} km/jam';
+  }
+
+  String _formatStatusText(FamilyMemberLocation f) {
+    final diffMinutes = DateTime.now().difference(f.updatedAt).inMinutes;
+    if (diffMinutes <= 10) {
+      if (f.speed != null && f.speed! >= 1.5) {
+        return _formatSpeedText(f.speed);
+      }
+      return '🟢 Aktif Realtime';
+    } else if (diffMinutes < 60) {
+      return '⚪ Offline ($diffMinutes mnt lalu)';
+    } else {
+      return '⚪ Offline (${(diffMinutes / 60).floor()} jam lalu)';
+    }
   }
 
   static Future<void> launchNavigation(double lat, double lng) async {
@@ -2040,7 +2066,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
                   subtitle: Row(
                     children: [
                       Text(
-                        isLive ? _formatSpeedText(f.speed) : '⚪ Offline',
+                        _formatStatusText(f),
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w600,
@@ -2214,6 +2240,20 @@ class _FamilyDetailSheet extends StatelessWidget {
     return '🚗 ${s.round()} km/jam';
   }
 
+  String _formatDetailStatus(FamilyMemberLocation m) {
+    final diffMinutes = DateTime.now().difference(m.updatedAt).inMinutes;
+    if (diffMinutes <= 10) {
+      if (m.speed != null && m.speed! >= 1.5) {
+        return _formatSpeed(m.speed);
+      }
+      return '🟢 Aktif Realtime';
+    } else if (diffMinutes < 60) {
+      return '⚪ Offline ($diffMinutes mnt lalu)';
+    } else {
+      return '⚪ Offline (${(diffMinutes / 60).floor()} jam lalu)';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isLive = DateTime.now().difference(member.updatedAt).inMinutes <= 15;
@@ -2273,8 +2313,8 @@ class _FamilyDetailSheet extends StatelessWidget {
             runSpacing: 8,
             children: [
               StatusChip(
-                label: isLive ? _formatSpeed(member.speed) : 'Offline',
-                icon: isLive ? Icons.speed_rounded : Icons.pause_circle_rounded,
+                label: _formatDetailStatus(member),
+                icon: isLive ? (member.speed != null && member.speed! >= 1.5 ? Icons.speed_rounded : Icons.check_circle_rounded) : Icons.pause_circle_rounded,
                 color: isLive ? FamColors.primary : FamColors.muted,
               ),
               if (dist != null)

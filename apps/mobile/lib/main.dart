@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'background_service.dart';
 import 'notification_service.dart';
 import 'supabase_service.dart';
 import 'screens/onboarding_screen.dart';
@@ -13,6 +14,11 @@ void main() async {
   await NotificationService.initialize();
   await SupabaseService.initialize();
   final loggedIn = SupabaseService.isLoggedIn;
+  if (loggedIn) {
+    try {
+      await initializeBackgroundService();
+    } catch (_) {}
+  }
   runApp(FamLocApp(loggedIn: loggedIn));
 }
 

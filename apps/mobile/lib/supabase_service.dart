@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 const String kSupabaseUrl = 'https://wcqxtwdbgxmcojllntuh.supabase.co';
@@ -253,6 +254,13 @@ class SupabaseService {
       password: password,
       data: {'name': name},
     );
+    if (res.user != null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('famloc_user_id', res.user!.id);
+        await prefs.setBool('famloc_sharing_on', true);
+      } catch (_) {}
+    }
     return res;
   }
 
@@ -264,10 +272,22 @@ class SupabaseService {
       email: email,
       password: password,
     );
+    if (res.user != null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('famloc_user_id', res.user!.id);
+        await prefs.setBool('famloc_sharing_on', true);
+      } catch (_) {}
+    }
     return res;
   }
 
   static Future<void> signOut() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('famloc_user_id');
+      await prefs.setBool('famloc_sharing_on', false);
+    } catch (_) {}
     await client.auth.signOut();
   }
 
@@ -276,6 +296,10 @@ class SupabaseService {
     final user = currentUser;
     if (user == null) return null;
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('famloc_user_id', user.id);
+      await prefs.setBool('famloc_sharing_on', true);
+
       var res = await client
           .from('profiles')
           .select()
@@ -416,12 +440,13 @@ class SupabaseService {
     double? speed,
     int? battery,
     bool isMocked = false,
+    String? overrideUserId,
   }) async {
-    final user = currentUser;
-    if (user == null) return;
+    final uid = overrideUserId ?? currentUser?.id;
+    if (uid == null) return;
 
     await client.from('user_locations').upsert({
-      'user_id': user.id,
+      'user_id': uid,
       'lat': lat,
       'lng': lng,
       'accuracy': accuracy,
@@ -435,7 +460,7 @@ class SupabaseService {
     // Catat jejak perjalanan (Location History) jika bergerak
     try {
       await client.from('location_history').insert({
-        'user_id': user.id,
+        'user_id': uid,
         'lat': lat,
         'lng': lng,
         'speed': speed,

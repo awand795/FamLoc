@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:typed_data';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_service.dart';
@@ -274,6 +275,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: const Icon(Icons.logout_rounded),
                   label: const Text('Keluar'),
                   onPressed: () async {
+                    try {
+                      FlutterBackgroundService().invoke('stopService');
+                    } catch (_) {}
                     await SupabaseService.signOut();
                     await stopBackgroundSharing();
                     if (!context.mounted) return;

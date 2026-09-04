@@ -39,6 +39,14 @@ class NotificationService {
         .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
     if (androidImpl != null) {
       await androidImpl.requestNotificationsPermission();
+
+      const foregroundChannel = AndroidNotificationChannel(
+        'famloc_foreground',
+        'Layanan Latar Belakang FamLoc',
+        description: 'Menampilkan status pembaruan lokasi dan baterai keluarga secara realtime',
+        importance: Importance.low,
+      );
+      await androidImpl.createNotificationChannel(foregroundChannel);
     }
 
     _isInitialized = true;
