@@ -363,20 +363,20 @@ class SupabaseService {
   }
 
   // ---- Friends / Family Management ----
-  static Future<List<UserProfile>> getFriends() async {
-    final user = currentUser;
-    if (user == null) return [];
+  static Future<List<UserProfile>> getFriends({String? currentUserId}) async {
+    final uid = currentUserId ?? currentUser?.id;
+    if (uid == null) return [];
 
     final res = await client
         .from('friendships')
         .select('user_id_a, user_id_b')
-        .or('user_id_a.eq.${user.id},user_id_b.eq.${user.id}');
+        .or('user_id_a.eq.$uid,user_id_b.eq.$uid');
 
     final friendIds = <String>[];
     for (final row in (res as List)) {
       final a = row['user_id_a'] as String;
       final b = row['user_id_b'] as String;
-      friendIds.add(a == user.id ? b : a);
+      friendIds.add(a == uid ? b : a);
     }
 
     if (friendIds.isEmpty) return [];
@@ -445,35 +445,51 @@ class SupabaseService {
     final uid = overrideUserId ?? currentUser?.id;
     if (uid == null) return;
 
-    await client.from('user_locations').upsert({
-      'user_id': uid,
-      'lat': lat,
-      'lng': lng,
-      'accuracy': accuracy,
-      'heading': heading,
-      'speed': speed,
-      'battery': battery,
-      'is_mocked': isMocked,
-      'updated_at': DateTime.now().toIso8601String(),
-    });
-
-    // Catat jejak perjalanan (Location History) jika bergerak
     try {
-      await client.from('location_history').insert({
-        'user_id': uid,
-        'lat': lat,
-        'lng': lng,
-        'speed': speed,
-        'created_at': DateTime.now().toIso8601String(),
+      // 1. Panggil RPC update_location_background (SECURITY DEFINER — kebal RLS & 100% konsisten)
+      await client.rpc('update_location_background', params: {
+        'p_user_id': uid,
+        'p_lat': lat,
+        'p_lng': lng,
+        'p_accuracy': accuracy,
+        'p_heading': heading,
+        'p_speed': speed,
+        'p_battery': battery,
+        'p_is_mocked': isMocked,
       });
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Warning: RPC update_location_background error ($e), fallback direct upsert');
+      try {
+        await client.from('user_locations').upsert({
+          'user_id': uid,
+          'lat': lat,
+          'lng': lng,
+          'accuracy': accuracy,
+          'heading': heading,
+          'speed': speed,
+          'battery': battery,
+          'is_mocked': isMocked,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+
+        if (speed != null && speed > 1.0) {
+          await client.from('location_history').insert({
+            'user_id': uid,
+            'lat': lat,
+            'lng': lng,
+            'speed': speed,
+            'created_at': DateTime.now().toIso8601String(),
+          });
+        }
+      } catch (_) {}
+    }
   }
 
-  static Future<List<FamilyMemberLocation>> getFamilyLocations() async {
-    final myId = currentUser?.id;
+  static Future<List<FamilyMemberLocation>> getFamilyLocations({String? currentUserId}) async {
+    final myId = currentUserId ?? currentUser?.id;
     if (myId == null) return [];
 
-    final friends = await getFriends();
+    final friends = await getFriends(currentUserId: myId);
     final friendIds = friends.map((f) => f.id).toList();
 
     final res = await client

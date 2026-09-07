@@ -260,19 +260,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     if (defaultTargetPlatform == TargetPlatform.android) {
       locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        distanceFilter: 3,
         forceLocationManager: false,
-        intervalDuration: const Duration(seconds: 5),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationText: "FamLoc sedang aktif membagikan lokasi ke keluargamu.",
-          notificationTitle: "📍 Berbagi Lokasi Aktif",
-          enableWakeLock: true,
-        ),
+        intervalDuration: const Duration(seconds: 4),
       );
     } else {
       locationSettings = const LocationSettings(
         accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
+        distanceFilter: 3,
       );
     }
 

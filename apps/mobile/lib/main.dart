@@ -8,6 +8,8 @@ import 'screens/onboarding_screen.dart';
 import 'screens/map_home.dart';
 import 'theme.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
@@ -16,6 +18,12 @@ void main() async {
   final loggedIn = SupabaseService.isLoggedIn;
   if (loggedIn) {
     try {
+      final user = SupabaseService.currentUser;
+      if (user != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('famloc_user_id', user.id);
+        await prefs.setBool('famloc_sharing_on', true);
+      }
       await initializeBackgroundService();
     } catch (_) {}
   }
