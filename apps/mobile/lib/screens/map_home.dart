@@ -378,23 +378,30 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       }
 
       final previousZone = _lastKnownGeofenceZone[m.userId];
-      if (currentZone != null && currentZone != previousZone) {
+      final isFirstCheck = !_lastKnownGeofenceZone.containsKey(m.userId);
+
+      if (isFirstCheck) {
+        // Catat posisi awal saat pertama kali buka aplikasi tanpa memunculkan alert berulang
+        _lastKnownGeofenceZone[m.userId] = currentZone ?? '';
+      } else if (currentZone != null && currentZone != previousZone && currentZone.isNotEmpty) {
         _lastKnownGeofenceZone[m.userId] = currentZone;
         _showSnack('$currentZoneIcon ${m.name} sudah tiba di $currentZone');
-        NotificationService.showGeofenceNotification(
-          name: m.name,
-          placeName: currentZone,
-          isArriving: true,
-          icon: currentZoneIcon,
-        );
-      } else if (currentZone == null && previousZone != null) {
-        _lastKnownGeofenceZone.remove(m.userId);
-        _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
-        NotificationService.showGeofenceNotification(
-          name: m.name,
-          placeName: previousZone,
-          isArriving: false,
-        );
+      } else if (currentZone == null && previousZone != null && previousZone.isNotEmpty) {
+        // Cek buffer hysteresis (radius + 40m) agar tidak bouncing akibat deviasi sinyal GPS
+        bool stillNear = false;
+        for (final p in _places) {
+          if (p.name == previousZone) {
+            final d = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
+            if (d <= p.radius + 40) {
+              stillNear = true;
+              break;
+            }
+          }
+        }
+        if (!stillNear) {
+          _lastKnownGeofenceZone[m.userId] = '';
+          _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
+        }
       }
 
       // Simpan riwayat jarak ke setiap tempat untuk perhitungan vektor arah ETA

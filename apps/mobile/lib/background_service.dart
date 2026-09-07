@@ -90,11 +90,18 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   // State memori di background service
   List<PlaceZone> cachedPlaces = [];
   DateTime lastPlacesFetch = DateTime.fromMillisecondsSinceEpoch(0);
-  String? lastMyPlace; // Tempat saya saat ini (untuk deteksi tiba/berangkat)
+  String? lastMyPlace; // Tempat saya saat ini
+  bool isFirstSelfGeofenceCheck = true;
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
   const distCalc = Distance();
+
+  // Muat state geofence tersimpan dari SharedPreferences agar tidak trigger ulang saat service restart
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    lastMyPlace = prefs.getString('saved_last_place_self');
+  } catch (_) {}
 
   /// Muat daftar tempat (geofence) dari Supabase
   Future<void> refreshPlaces() async {
@@ -154,7 +161,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         );
       }
 
-      // 4. Evaluasi Geofencing Diri Sendiri (Deteksi Tiba di Kantor / Kost / Rumah)
+      // 4. Evaluasi Geofencing Diri Sendiri (HANYA SEKALI SAJA SAAT TIBA / BERANGKAT)
       if (cachedPlaces.isNotEmpty) {
         final myPos = LatLng(pos.latitude, pos.longitude);
         String? currentPlace;
@@ -169,42 +176,75 @@ void onBackgroundServiceStart(ServiceInstance service) async {
           }
         }
 
-        if (currentPlace != null && currentPlace != lastMyPlace) {
+        final nowMs = DateTime.now().millisecondsSinceEpoch;
+
+        if (isFirstSelfGeofenceCheck) {
+          // Saat pertama kali jalan: catat posisi sekarang tanpa memunculkan notifikasi
+          isFirstSelfGeofenceCheck = false;
           lastMyPlace = currentPlace;
-          // Munculkan notifikasi bahwa saya sudah sampai di tempat tujuan!
-          NotificationService.showGeofenceNotification(
-            name: 'Anda',
-            placeName: currentPlace,
-            isArriving: true,
-            icon: currentIcon,
-          );
+          if (currentPlace != null) {
+            await prefs.setString('saved_last_place_self', currentPlace);
+          }
+        } else if (currentPlace != null && currentPlace != lastMyPlace) {
+          // Hanya beri notifikasi jika belum pernah di-notif dalam 15 menit terakhir untuk tempat yang sama
+          final lastAlertTime = prefs.getInt('last_alert_self_$currentPlace') ?? 0;
+          if (nowMs - lastAlertTime > 15 * 60 * 1000) {
+            await prefs.setInt('last_alert_self_$currentPlace', nowMs);
+            lastMyPlace = currentPlace;
+            await prefs.setString('saved_last_place_self', currentPlace);
 
-          try {
-            await SupabaseService.client.from('place_events').insert({
-              'user_id': userId,
-              'place_name': currentPlace,
-              'event_type': 'arrived',
-              'icon': currentIcon,
-            });
-          } catch (_) {}
-        } else if (currentPlace == null && lastMyPlace != null) {
-          final departedPlace = lastMyPlace!;
-          lastMyPlace = null;
-          NotificationService.showGeofenceNotification(
-            name: 'Anda',
-            placeName: departedPlace,
-            isArriving: false,
-            icon: '🚗',
-          );
+            NotificationService.showGeofenceNotification(
+              name: 'Anda',
+              placeName: currentPlace,
+              isArriving: true,
+              icon: currentIcon,
+            );
 
-          try {
-            await SupabaseService.client.from('place_events').insert({
-              'user_id': userId,
-              'place_name': departedPlace,
-              'event_type': 'departed',
-              'icon': '🚗',
-            });
-          } catch (_) {}
+            try {
+              await SupabaseService.client.from('place_events').insert({
+                'user_id': userId,
+                'place_name': currentPlace,
+                'event_type': 'arrived',
+                'icon': currentIcon,
+              });
+            } catch (_) {}
+          } else {
+            lastMyPlace = currentPlace;
+          }
+        } else if (currentPlace == null && lastMyPlace != null && lastMyPlace!.isNotEmpty) {
+          // Cek buffer hysteresis (radius + 40m) agar tidak bouncing akibat deviasi GPS di gedung
+          bool stillNear = false;
+          for (final p in cachedPlaces) {
+            if (p.name == lastMyPlace) {
+              final d = distCalc.as(LengthUnit.Meter, myPos, LatLng(p.lat, p.lng));
+              if (d <= p.radius + 40) {
+                stillNear = true;
+                break;
+              }
+            }
+          }
+
+          if (!stillNear) {
+            final departedPlace = lastMyPlace!;
+            lastMyPlace = null;
+            await prefs.remove('saved_last_place_self');
+
+            NotificationService.showGeofenceNotification(
+              name: 'Anda',
+              placeName: departedPlace,
+              isArriving: false,
+              icon: '🚗',
+            );
+
+            try {
+              await SupabaseService.client.from('place_events').insert({
+                'user_id': userId,
+                'place_name': departedPlace,
+                'event_type': 'departed',
+                'icon': '🚗',
+              });
+            } catch (_) {}
+          }
         }
       }
     } catch (e) {
@@ -212,19 +252,19 @@ void onBackgroundServiceStart(ServiceInstance service) async {
     }
   }
 
-  // A. GPS Hardware Stream (Aktif saat berkendara / berjalan kaki — update tiap 3 meter)
+  // A. GPS Hardware Stream (Mode Navigasi Cepat: update tiap 2 meter / 3 detik saat berkendara)
   LocationSettings locationSettings;
   if (defaultTargetPlatform == TargetPlatform.android) {
     locationSettings = AndroidSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 3, // Update tiap berpindah 3 meter!
-      intervalDuration: const Duration(seconds: 4), // Interval cepat 4 detik
+      accuracy: LocationAccuracy.bestForNavigation, // Akurasi tertinggi untuk berkendara
+      distanceFilter: 2, // Bergerak 2 meter langsung kirim
+      intervalDuration: const Duration(seconds: 3), // Cek interval 3 detik
       forceLocationManager: false,
     );
   } else {
     locationSettings = const LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 3,
+      distanceFilter: 2,
     );
   }
 
@@ -236,11 +276,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
     debugPrint('Error getPositionStream: $e');
   }
 
-  // B. Loop Berkala Latar Belakang (Jalan setiap 10 detik)
-  // Menjaga agar saat HP diam / layar terkunci / di meja:
-  // 1. Lokasi & baterai tetap ter-push secara presisi
+  // B. Loop Berkala Latar Belakang (Jalan setiap 8 detik)
+  // Menjaga agar saat HP diam / layar terkunci:
+  // 1. Koordinat & baterai tetap ter-push
   // 2. Mendeteksi pergerakan & kedatangan keluarga (Ibu memonitor Awanda sampai Kantor)
-  Timer.periodic(const Duration(seconds: 10), (_) async {
+  Timer.periodic(const Duration(seconds: 8), (_) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final sharingOn = prefs.getBool('famloc_sharing_on') ?? true;
@@ -258,14 +298,14 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         await refreshPlaces();
       }
 
-      // 1. Heartbeat posisi sendiri jika tidak ada event GPS selama > 12 detik
-      if (now.difference(lastHeartbeat).inSeconds >= 12) {
+      // 1. Heartbeat posisi sendiri jika stream GPS sedang hening (HP diam > 10 detik)
+      if (now.difference(lastHeartbeat).inSeconds >= 10) {
         Position? pos;
         try {
           pos = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 8),
+              timeLimit: Duration(seconds: 5),
             ),
           );
         } catch (_) {
@@ -279,10 +319,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         }
       }
 
-      // 2. Monitoring Anggota Keluarga (Untuk memunculkan notif bahwa keluarga telah tiba / berangkat)
+      // 2. Monitoring Anggota Keluarga (Pemberitahuan Tiba SEKALI SAJA)
       final family = await SupabaseService.getFamilyLocations(currentUserId: userId);
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+
       for (final f in family) {
-        // Evaluasi Geofencing untuk anggota keluarga
         String? fZone;
         String fIcon = '🏠';
         final fPos = LatLng(f.lat, f.lng);
@@ -296,26 +337,55 @@ void onBackgroundServiceStart(ServiceInstance service) async {
           }
         }
 
+        final isFirstObservation = !familyPlaces.containsKey(f.userId);
         final prevZone = familyPlaces[f.userId];
-        if (fZone != null && fZone != prevZone) {
-          familyPlaces[f.userId] = fZone;
-          // NOTIFIKASI KELUARGA TELAH TIBA DI TEMPAT TUJUAN (Contoh: Awanda telah tiba di Kantor)
-          NotificationService.showGeofenceNotification(
-            name: f.name,
-            placeName: fZone,
-            isArriving: true,
-            icon: fIcon,
-          );
-        } else if (fZone == null && prevZone != null) {
-          final departedZone = prevZone;
-          familyPlaces.remove(f.userId);
-          // NOTIFIKASI KELUARGA TELAH BERANGKAT / MENINGGALKAN TEMPAT
-          NotificationService.showGeofenceNotification(
-            name: f.name,
-            placeName: departedZone,
-            isArriving: false,
-            icon: '🚗',
-          );
+
+        if (isFirstObservation) {
+          // Saat pertama kali terhubung: catat posisi awal keluarga tanpa spam notifikasi
+          familyPlaces[f.userId] = fZone ?? '';
+        } else if (fZone != null && fZone != prevZone && fZone.isNotEmpty) {
+          // Cek cooldown 15 menit agar tidak berulang
+          final alertKey = 'last_alert_fam_${f.userId}_$fZone';
+          final lastAlertTime = prefs.getInt(alertKey) ?? 0;
+
+          if (nowMs - lastAlertTime > 15 * 60 * 1000) {
+            await prefs.setInt(alertKey, nowMs);
+            familyPlaces[f.userId] = fZone;
+
+            // NOTIFIKASI KELUARGA TELAH TIBA DI TEMPAT TUJUAN (Hanya sekali!)
+            NotificationService.showGeofenceNotification(
+              name: f.name,
+              placeName: fZone,
+              isArriving: true,
+              icon: fIcon,
+            );
+          } else {
+            familyPlaces[f.userId] = fZone;
+          }
+        } else if (fZone == null && prevZone != null && prevZone.isNotEmpty) {
+          // Cek buffer hysteresis (radius + 40m) sebelum menyatakan keluarga meninggalkan tempat
+          bool stillNear = false;
+          for (final p in cachedPlaces) {
+            if (p.name == prevZone) {
+              final d = distCalc.as(LengthUnit.Meter, fPos, LatLng(p.lat, p.lng));
+              if (d <= p.radius + 40) {
+                stillNear = true;
+                break;
+              }
+            }
+          }
+
+          if (!stillNear) {
+            final departedZone = prevZone;
+            familyPlaces[f.userId] = '';
+
+            NotificationService.showGeofenceNotification(
+              name: f.name,
+              placeName: departedZone,
+              isArriving: false,
+              icon: '🚗',
+            );
+          }
         }
 
         // Peringatan Kecepatan Tinggi Keluarga (> 80 km/jam)
