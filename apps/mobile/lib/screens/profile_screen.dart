@@ -5,7 +5,6 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../supabase_service.dart';
-import '../background_task.dart';
 import '../theme.dart';
 import 'onboarding_screen.dart';
 
@@ -279,7 +278,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       FlutterBackgroundService().invoke('stopService');
                     } catch (_) {}
                     await SupabaseService.signOut();
-                    await stopBackgroundSharing();
                     if (!context.mounted) return;
                     Navigator.of(context).pushAndRemoveUntil(
                       MaterialPageRoute(builder: (_) => const OnboardingScreen()),

@@ -120,14 +120,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       _refreshRingAlerts();
     });
 
-    // Interval stream lokasi sendiri & sync heartbeat tiap 5 detik (menjaga koneksi tetap hidup di layar mati)
-    _pushTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
-      _pushMyLocation();
-      if (timer.tick % 2 == 0) {
-        _refreshLocations();
-        _refreshSosAlerts();
-        _refreshRingAlerts();
-      }
+    // Safety fallback timer: hanya untuk SOS dan Ring Alert yang tidak punya realtime subscription yang reliabel
+    // Lokasi sudah di-push oleh _positionStreamSub (GPS stream, tiap 3-4 detik)
+    // Lokasi keluarga sudah di-refresh oleh _realtimeSubscription (WebSocket)
+    // Jadi timer ini hanya perlu jalan tiap 30 detik sebagai backup
+    _pushTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _refreshSosAlerts();
+      _refreshRingAlerts();
     });
   }
 
@@ -321,7 +320,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
   Future<void> _refreshLocations() async {
     try {
-      final list = await SupabaseService.getFamilyLocations();
+      final list = await SupabaseService.getFamilyLocations(currentUserId: _me?.id);
       if (!mounted) return;
       setState(() => _family = list);
 
@@ -386,6 +385,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       } else if (currentZone != null && currentZone != previousZone && currentZone.isNotEmpty) {
         _lastKnownGeofenceZone[m.userId] = currentZone;
         _showSnack('$currentZoneIcon ${m.name} sudah tiba di $currentZone');
+        // ✅ Push notifikasi ke HP ini agar muncul di notif bar walaupun app ditutup
+        NotificationService.showGeofenceNotification(
+          name: m.name,
+          placeName: currentZone,
+          isArriving: true,
+          icon: currentZoneIcon,
+        );
       } else if (currentZone == null && previousZone != null && previousZone.isNotEmpty) {
         // Cek buffer hysteresis (radius + 40m) agar tidak bouncing akibat deviasi sinyal GPS
         bool stillNear = false;
@@ -401,6 +407,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         if (!stillNear) {
           _lastKnownGeofenceZone[m.userId] = '';
           _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
+          // ✅ Push notifikasi keberangkatan
+          NotificationService.showGeofenceNotification(
+            name: m.name,
+            placeName: previousZone,
+            isArriving: false,
+            icon: '🚗',
+          );
         }
       }
 

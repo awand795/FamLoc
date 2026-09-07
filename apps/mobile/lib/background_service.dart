@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -12,6 +14,23 @@ import 'supabase_service.dart';
 
 const String kForegroundChannelId = 'famloc_foreground';
 const int kForegroundNotificationId = 888;
+
+/// Minta user untuk mengecualikan FamLoc dari optimasi baterai Android.
+/// Ini KRITIS agar Android tidak "membunuh" foreground service saat layar mati.
+/// Tanpa ini, GPS akan berhenti dalam 15–30 menit di Doze Mode.
+Future<void> requestBatteryOptimizationWhitelist() async {
+  if (!Platform.isAndroid) return;
+  try {
+    const channel = MethodChannel('eu.awanda.famloc/battery');
+    // Cek dulu apakah sudah di-whitelist
+    final bool isWhitelisted = await channel.invokeMethod('isIgnoringBatteryOptimizations') as bool? ?? false;
+    if (!isWhitelisted) {
+      await channel.invokeMethod('requestIgnoreBatteryOptimizations');
+    }
+  } catch (_) {
+    // Fallback: abaikan jika MethodChannel belum tersedia (tidak mematikan app)
+  }
+}
 
 /// Inisialisasi Layanan Latar Belakang 24/7 (Android Foreground Service)
 Future<void> initializeBackgroundService() async {
@@ -29,6 +48,10 @@ Future<void> initializeBackgroundService() async {
       await prefs.setBool('famloc_sharing_on', true);
     } catch (_) {}
   }
+
+  // ✅ Minta whitelist battery optimization agar Android tidak membunuh service
+  // saat layar mati / masuk Doze Mode
+  await requestBatteryOptimizationWhitelist();
 
   await service.configure(
     androidConfiguration: AndroidConfiguration(
@@ -65,6 +88,15 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
 
   if (service is AndroidServiceInstance) {
+    // ✅ PENTING: Langsung set sebagai foreground service di awal startup
+    // (Tidak menunggu event dari UI — supaya service selalu punya notifikasi persistent)
+    await service.setAsForegroundService();
+    service.setForegroundNotificationInfo(
+      title: '📍 FamLoc Aktif',
+      content: 'Menginisialisasi layanan lokasi...',
+    );
+
+    // Listener opsional dari UI jika perlu toggle mode
     service.on('setAsForeground').listen((_) {
       service.setAsForegroundService();
     });
@@ -95,6 +127,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
+  String? lastRingAlertId; // ✅ Track ID ring alert agar tidak dering berulang setiap 8 detik
   const distCalc = Distance();
 
   // Muat state geofence tersimpan dari SharedPreferences agar tidak trigger ulang saat service restart
@@ -404,11 +437,18 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       }
 
       // 3. Cek Ring Alert Aktif (Deringkan HP jika diminta keluarga)
+      // ✅ Hanya trigger sekali per alert (bukan setiap 8 detik!)
       try {
         final ringAlerts = await SupabaseService.getActiveRingAlertsForMe();
         if (ringAlerts.isNotEmpty) {
           final ring = ringAlerts.first;
-          NotificationService.showRingDeviceNotification(senderName: ring.senderName);
+          if (ring.id != lastRingAlertId) {
+            lastRingAlertId = ring.id;
+            NotificationService.showRingDeviceNotification(senderName: ring.senderName);
+          }
+        } else {
+          // Reset jika tidak ada ring alert aktif lagi
+          lastRingAlertId = null;
         }
       } catch (_) {}
     } catch (e) {

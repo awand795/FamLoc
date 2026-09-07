@@ -57,19 +57,42 @@
         <receiver android:name="dev.flutterbackground.worker.FlutterBackgroundWorker" android:exported="false"/>
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" android:exported="false"/>
 
+        <!--
+            BootReceiver: Auto-restart FamLoc service setelah HP reboot.
+            Tanpa ini, service mati saat HP restart dan tidak aktif lagi sampai user buka app.
+            Mendukung BOOT_COMPLETED (standard) + QUICKBOOT_POWERON (HTC/Huawei fast boot).
+        -->
+        <receiver
+            android:name=".BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+        </receiver>
+
         <!-- Geolocator foreground service for continuous background location tracking (Android 14+) -->
         <service
             android:name="com.baseflow.geolocator.GeolocatorLocationService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="location" />
+            android:foregroundServiceType="location"
+            android:stopWithTask="false" />
 
-        <!-- Flutter Background Service for 24/7 background location and battery sync -->
+        <!--
+            Flutter Background Service: 24/7 background location dan battery sync.
+            stopWithTask="false" → service tetap jalan meski app di-swipe/ditutup dari recents.
+            foregroundServiceType="location" → wajib untuk GPS background di Android 10+.
+        -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:enabled="true"
             android:exported="true"
             android:foregroundServiceType="location"
+            android:stopWithTask="false"
             tools:replace="android:exported" />
     </application>
     <!-- Required to query activities that can process text, see:

@@ -191,7 +191,7 @@ class NotificationService {
     final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
     await _notificationsPlugin.show(
-      888,
+      444, // ⚠️ Jangan pakai 888 — itu ID foreground service!
       '⚠️ Baterai HP $name Tersisa $battery%',
       'Baterai HP $name tersisa sedikit ($battery%). Ingatkan beliau untuk segera mengisi daya.',
       details,
