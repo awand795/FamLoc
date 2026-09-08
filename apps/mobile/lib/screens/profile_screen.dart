@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../background_task.dart';
 import '../supabase_service.dart';
 import '../theme.dart';
 import 'onboarding_screen.dart';
@@ -276,6 +277,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: () async {
                     try {
                       FlutterBackgroundService().invoke('stopService');
+                      await stopBackgroundSharing();
                     } catch (_) {}
                     await SupabaseService.signOut();
                     if (!context.mounted) return;

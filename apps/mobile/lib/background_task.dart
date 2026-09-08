@@ -1,3 +1,4 @@
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -20,12 +21,23 @@ void callbackDispatcher() {
   });
 }
 
-/// Ambil lokasi dan push ke Supabase dari background isolate.
+/// Ambil lokasi dan push ke Supabase dari background isolate,
+/// sekaligus bertindak sebagai WATCHDOG untuk menghidupkan kembali
+/// FlutterBackgroundService jika dimatikan oleh sistem Android.
 Future<void> _pushLocationBackground() async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final sharingOn = prefs.getBool('famloc_sharing_on') ?? false;
     if (!sharingOn) return;
+
+    // 1. WATCHDOG: Cek dan hidupkan kembali FlutterBackgroundService jika mati
+    try {
+      final service = FlutterBackgroundService();
+      final isRunning = await service.isRunning();
+      if (!isRunning) {
+        await service.startService();
+      }
+    } catch (_) {}
 
     final permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied ||

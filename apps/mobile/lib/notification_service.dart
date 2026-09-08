@@ -40,13 +40,59 @@ class NotificationService {
     if (androidImpl != null) {
       await androidImpl.requestNotificationsPermission();
 
+      // Channel 1: Foreground Service 24/7 (Importance.default agar tidak di-dismiss/disembunyikan oleh sistem)
       const foregroundChannel = AndroidNotificationChannel(
         'famloc_foreground',
         'Layanan Latar Belakang FamLoc',
         description: 'Menampilkan status pembaruan lokasi dan baterai keluarga secara realtime',
-        importance: Importance.low,
+        importance: Importance.defaultImportance,
       );
       await androidImpl.createNotificationChannel(foregroundChannel);
+
+      // Channel 2: Geofencing (Zona Aman Tiba & Berangkat)
+      const geofenceChannel = AndroidNotificationChannel(
+        channelGeofence,
+        'Zona Aman (Geofencing)',
+        description: 'Pemberitahuan saat keluarga tiba atau meninggalkan tempat',
+        importance: Importance.high,
+      );
+      await androidImpl.createNotificationChannel(geofenceChannel);
+
+      // Channel 3: Sinyal Darurat SOS
+      const sosChannel = AndroidNotificationChannel(
+        channelSos,
+        'Peringatan Darurat SOS',
+        description: 'Notifikasi darurat dari anggota keluarga',
+        importance: Importance.max,
+      );
+      await androidImpl.createNotificationChannel(sosChannel);
+
+      // Channel 4: Kabar Kilat (Quick Check-in)
+      const checkinChannel = AndroidNotificationChannel(
+        channelCheckin,
+        'Kabar Kilat Keluarga',
+        description: 'Pesan cepat dan update status dari keluarga',
+        importance: Importance.high,
+      );
+      await androidImpl.createNotificationChannel(checkinChannel);
+
+      // Channel 5: Baterai Lemah
+      const batteryChannel = AndroidNotificationChannel(
+        channelBattery,
+        'Peringatan Baterai Lemah',
+        description: 'Notifikasi saat baterai HP keluarga tersisa sedikit',
+        importance: Importance.high,
+      );
+      await androidImpl.createNotificationChannel(batteryChannel);
+
+      // Channel 6: Peringatan Kecepatan & Dering HP
+      const speedChannel = AndroidNotificationChannel(
+        'famloc_speed',
+        'Peringatan Kecepatan Berkendara',
+        description: 'Peringatan saat keluarga melaju dengan kecepatan tinggi',
+        importance: Importance.high,
+      );
+      await androidImpl.createNotificationChannel(speedChannel);
     }
 
     _isInitialized = true;

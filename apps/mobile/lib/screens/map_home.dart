@@ -12,6 +12,7 @@ import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../background_service.dart';
+import '../background_task.dart';
 import '../supabase_service.dart';
 import '../notification_service.dart';
 import '../theme.dart';
@@ -244,6 +245,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (_me?.sharingOn == true) {
         try {
           await initializeBackgroundService();
+          await initBackgroundTask();
         } catch (_) {}
         _startLocationStream();
         await _pushMyLocation();
@@ -531,12 +533,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       if (on) {
         try {
           await initializeBackgroundService();
+          await initBackgroundTask();
         } catch (_) {}
         _startLocationStream();
         await _pushMyLocation();
       } else {
         try {
           FlutterBackgroundService().invoke('stopService');
+          await stopBackgroundSharing();
         } catch (_) {}
         _stopLocationStream();
       }

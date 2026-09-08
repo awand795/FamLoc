@@ -118,11 +118,6 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
   try {
     await SupabaseService.initialize();
-    // KRITIS: Refresh session agar token tidak kadaluarsa di isolat background
-    // Tanpa ini, pushLocation dan geofencing gagal diam-diam setelah beberapa jam
-    try {
-      await SupabaseService.client.auth.refreshSession();
-    } catch (_) {}
   } catch (_) {}
 
   // State memori di background service
@@ -133,7 +128,6 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
-  DateTime lastTokenRefresh = DateTime.fromMillisecondsSinceEpoch(0); // Refresh token tiap 30 menit
   String? lastRingAlertId; // ✅ Track ID ring alert agar tidak dering berulang setiap 8 detik
   const distCalc = Distance();
 
@@ -309,18 +303,25 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   }
 
   try {
-    Geolocator.getPositionStream(locationSettings: locationSettings).listen((Position pos) async {
-      await handleMyLocation(pos);
-    });
+    Geolocator.getPositionStream(locationSettings: locationSettings).listen(
+      (Position pos) async {
+        await handleMyLocation(pos);
+      },
+      onError: (e) {
+        // KRITIS: Jangan biarkan error GPS mematikan Dart isolate!
+        debugPrint('[BG] GPS Stream error (non-fatal, continuing): $e');
+      },
+      cancelOnError: false,
+    );
   } catch (e) {
-    debugPrint('Error getPositionStream: $e');
+    debugPrint('[BG] Error initializing getPositionStream: $e');
   }
 
-  // B. Loop Berkala Latar Belakang (Jalan setiap 8 detik)
+  // B. Loop Berkala Latar Belakang (Jalan setiap 20 detik)
   // Menjaga agar saat HP diam / layar terkunci:
   // 1. Koordinat & baterai tetap ter-push
   // 2. Mendeteksi pergerakan & kedatangan keluarga (Ibu memonitor Awanda sampai Kantor)
-  Timer.periodic(const Duration(seconds: 8), (_) async {
+  Timer.periodic(const Duration(seconds: 20), (_) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final sharingOn = prefs.getBool('famloc_sharing_on') ?? true;
@@ -338,26 +339,14 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         await refreshPlaces();
       }
 
-      // KRITIS: Refresh Supabase auth token tiap 30 menit agar service tidak mati diam-diam
-      // Token JWT Supabase kadaluarsa setelah 1 jam. Refresh di sini mencegah silent failure.
-      if (now.difference(lastTokenRefresh).inMinutes >= 30) {
-        try {
-          await SupabaseService.client.auth.refreshSession();
-          lastTokenRefresh = now;
-          debugPrint('[BG] Supabase session refreshed successfully');
-        } catch (e) {
-          debugPrint('[BG] Warning: session refresh failed ($e)');
-        }
-      }
-
-      // 1. Heartbeat posisi sendiri jika stream GPS sedang hening (HP diam > 10 detik)
-      if (now.difference(lastHeartbeat).inSeconds >= 10) {
+      // 1. Heartbeat posisi sendiri jika stream GPS sedang hening (HP diam > 15 detik)
+      if (now.difference(lastHeartbeat).inSeconds >= 15) {
         Position? pos;
         try {
           pos = await Geolocator.getCurrentPosition(
             locationSettings: const LocationSettings(
               accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 5),
+              timeLimit: Duration(seconds: 8),
             ),
           );
         } catch (_) {
@@ -372,7 +361,12 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       }
 
       // 2. Monitoring Anggota Keluarga (Pemberitahuan Tiba SEKALI SAJA)
-      final family = await SupabaseService.getFamilyLocations(currentUserId: userId);
+      List<FamilyMemberLocation> family = [];
+      try {
+        family = await SupabaseService.getFamilyLocations(currentUserId: userId);
+      } catch (e) {
+        debugPrint('[BG] Error getFamilyLocations (non-fatal): $e');
+      }
       final nowMs = DateTime.now().millisecondsSinceEpoch;
 
       for (final f in family) {
