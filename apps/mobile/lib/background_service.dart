@@ -45,6 +45,7 @@ Future<void> initializeBackgroundService() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('famloc_user_id', user.id);
+      // Tandai sharing aktif karena fungsi ini dipanggil saat user MENGAKTIFKAN sharing
       await prefs.setBool('famloc_sharing_on', true);
     } catch (_) {}
   }
