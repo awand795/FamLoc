@@ -117,6 +117,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
   try {
     await SupabaseService.initialize();
+    // KRITIS: Refresh session agar token tidak kadaluarsa di isolat background
+    // Tanpa ini, pushLocation dan geofencing gagal diam-diam setelah beberapa jam
+    try {
+      await SupabaseService.client.auth.refreshSession();
+    } catch (_) {}
   } catch (_) {}
 
   // State memori di background service
@@ -127,6 +132,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime lastTokenRefresh = DateTime.fromMillisecondsSinceEpoch(0); // Refresh token tiap 30 menit
   String? lastRingAlertId; // ✅ Track ID ring alert agar tidak dering berulang setiap 8 detik
   const distCalc = Distance();
 
@@ -329,6 +335,18 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       // Refresh places tiap 2 menit
       if (cachedPlaces.isEmpty || now.difference(lastPlacesFetch).inMinutes >= 2) {
         await refreshPlaces();
+      }
+
+      // KRITIS: Refresh Supabase auth token tiap 30 menit agar service tidak mati diam-diam
+      // Token JWT Supabase kadaluarsa setelah 1 jam. Refresh di sini mencegah silent failure.
+      if (now.difference(lastTokenRefresh).inMinutes >= 30) {
+        try {
+          await SupabaseService.client.auth.refreshSession();
+          lastTokenRefresh = now;
+          debugPrint('[BG] Supabase session refreshed successfully');
+        } catch (e) {
+          debugPrint('[BG] Warning: session refresh failed ($e)');
+        }
       }
 
       // 1. Heartbeat posisi sendiri jika stream GPS sedang hening (HP diam > 10 detik)
