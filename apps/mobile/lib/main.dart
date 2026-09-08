@@ -22,7 +22,15 @@ void main() async {
       if (user != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('famloc_user_id', user.id);
-        await prefs.setBool('famloc_sharing_on', true);
+        // JANGAN paksa famloc_sharing_on = true di sini!
+        // Sharing status diatur oleh user dari UI (map_home.dart _startSharingIfOn)
+        // dan disimpan permanen di SharedPreferences.
+        // Memaksa true di sini akan mengabaikan preferensi user yang sudah mematikan sharing.
+        final sharingAlreadySet = prefs.containsKey('famloc_sharing_on');
+        if (!sharingAlreadySet) {
+          // Hanya set default true jika belum pernah di-set (install pertama kali)
+          await prefs.setBool('famloc_sharing_on', true);
+        }
       }
       await initializeBackgroundService();
     } catch (_) {}
