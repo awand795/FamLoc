@@ -124,7 +124,6 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   List<PlaceZone> cachedPlaces = [];
   DateTime lastPlacesFetch = DateTime.fromMillisecondsSinceEpoch(0);
   String? lastMyPlace; // Tempat saya saat ini
-  bool isFirstSelfGeofenceCheck = true;
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
@@ -212,14 +211,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
         final nowMs = DateTime.now().millisecondsSinceEpoch;
 
-        if (isFirstSelfGeofenceCheck) {
-          // Saat pertama kali jalan: catat posisi sekarang tanpa memunculkan notifikasi
-          isFirstSelfGeofenceCheck = false;
-          lastMyPlace = currentPlace;
-          if (currentPlace != null) {
-            await prefs.setString('saved_last_place_self', currentPlace);
-          }
-        } else if (currentPlace != null && currentPlace != lastMyPlace) {
+        if (currentPlace != null && currentPlace != lastMyPlace) {
           // Hanya beri notifikasi jika belum pernah di-notif dalam 15 menit terakhir untuk tempat yang sama
           final lastAlertTime = prefs.getInt('last_alert_self_$currentPlace') ?? 0;
           if (nowMs - lastAlertTime > 15 * 60 * 1000) {
@@ -290,15 +282,23 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   LocationSettings locationSettings;
   if (defaultTargetPlatform == TargetPlatform.android) {
     locationSettings = AndroidSettings(
-      accuracy: LocationAccuracy.bestForNavigation, // Akurasi tertinggi untuk berkendara
-      distanceFilter: 2, // Bergerak 2 meter langsung kirim
-      intervalDuration: const Duration(seconds: 3), // Cek interval 3 detik
-      forceLocationManager: false,
+      accuracy: LocationAccuracy.bestForNavigation, // Akurasi tertinggi untuk navigasi & berkendara
+      distanceFilter: 3, // Bergerak 3 meter langsung kirim
+      intervalDuration: const Duration(seconds: 4), // Interval update hardware 4 detik
+      forceLocationManager: true, // KRITIS: Akses GPS hardware langsung tanpa throttling Google Play Services saat layar mati
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
+        notificationText: 'Menyinkronkan lokasi keluarga secara realtime...',
+        notificationChannelName: 'FamLoc Tracking Latar Belakang',
+        notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
+        enableWakeLock: true, // KRITIS: Mencegah CPU tidur saat layar mati!
+        setOngoing: true,
+      ),
     );
   } else {
     locationSettings = const LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 2,
+      distanceFilter: 3,
     );
   }
 
@@ -344,10 +344,16 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         Position? pos;
         try {
           pos = await Geolocator.getCurrentPosition(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              timeLimit: Duration(seconds: 8),
-            ),
+            locationSettings: defaultTargetPlatform == TargetPlatform.android
+                ? AndroidSettings(
+                    accuracy: LocationAccuracy.high,
+                    timeLimit: const Duration(seconds: 8),
+                    forceLocationManager: true,
+                  )
+                : const LocationSettings(
+                    accuracy: LocationAccuracy.high,
+                    timeLimit: Duration(seconds: 8),
+                  ),
           );
         } catch (_) {
           try {

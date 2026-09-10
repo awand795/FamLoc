@@ -243,6 +243,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   Future<void> _startSharingIfOn() async {
     try {
       if (_me?.sharingOn == true) {
+        await _ensurePermission(checkAlways: true);
         try {
           await initializeBackgroundService();
           await initBackgroundTask();
@@ -262,7 +263,7 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 3,
-        forceLocationManager: false,
+        forceLocationManager: true,
         intervalDuration: const Duration(seconds: 4),
       );
     } else {
@@ -500,16 +501,64 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     finally { _busy = false; }
   }
 
-  Future<bool> _ensurePermission() async {
+  Future<bool> _ensurePermission({bool checkAlways = false}) async {
     var perm = await Geolocator.checkPermission();
     if (perm == LocationPermission.denied) {
       perm = await Geolocator.requestPermission();
     }
+    if (perm == LocationPermission.deniedForever) {
+      if (mounted) {
+        _showSnack('Izin lokasi ditolak permanen. Silakan buka Pengaturan HP.');
+      }
+      return false;
+    }
+
+    // Jika pengguna hanya memberi izin "Saat aplikasi digunakan",
+    // edukasi agar memilih "Izinkan sepanjang waktu" agar tracking tidak mati saat layar HP mati
+    if (checkAlways && perm == LocationPermission.whileInUse && mounted) {
+      final shouldOpen = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(FamRadius.card)),
+          title: const Row(
+            children: [
+              Icon(Icons.location_on_rounded, color: FamColors.primary, size: 28),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text('Wajib: Izinkan Sepanjang Waktu',
+                    style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              ),
+            ],
+          ),
+          content: const Text(
+            'Agar lokasi Anda tetap terkirim ke keluarga saat layar HP mati atau aplikasi ditutup, '
+            'pilih opsi "Izinkan sepanjang waktu" (Allow all the time) pada menu Izin Lokasi.',
+            style: TextStyle(fontSize: 13.5, height: 1.45),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Nanti Saja'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Buka Pengaturan'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldOpen == true) {
+        await Geolocator.openAppSettings();
+      }
+    }
+
     return perm == LocationPermission.always || perm == LocationPermission.whileInUse;
   }
 
   Future<void> _toggleSharing(bool on) async {
-    if (on && !await _ensurePermission()) {
+    if (on && !await _ensurePermission(checkAlways: true)) {
       _showSnack('Izin lokasi diperlukan untuk membagikan posisi');
       return;
     }
