@@ -298,7 +298,6 @@ class SupabaseService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('famloc_user_id', user.id);
-      await prefs.setBool('famloc_sharing_on', true);
 
       var res = await client
           .from('profiles')
@@ -553,6 +552,12 @@ class SupabaseService {
       'battery': battery,
       'is_active': true,
     });
+    final profile = await getMyProfile();
+    await _sendFamilyPush(
+      kind: 'sos',
+      title: '🚨 SOS dari ${profile?.name ?? 'keluargamu'}',
+      body: 'Butuh bantuan segera.',
+    );
   }
 
   static Future<void> cancelSos() async {
@@ -648,6 +653,12 @@ class SupabaseService {
       'lat': lat,
       'lng': lng,
     });
+    final profile = await getMyProfile();
+    await _sendFamilyPush(
+      kind: 'checkin',
+      title: '$icon Kabar dari ${profile?.name ?? 'keluargamu'}',
+      body: message,
+    );
   }
 
   static Future<List<QuickCheckin>> getRecentCheckins() async {
@@ -679,6 +690,45 @@ class SupabaseService {
       'sender_name': myProfile?.name ?? 'Keluargamu',
       'is_active': true,
     });
+    await _sendFamilyPush(
+      kind: 'ring',
+      title: '🔊 Panggilan Cari HP',
+      body: '${myProfile?.name ?? 'Keluargamu'} sedang mencari HP ini.',
+      targetUserId: targetUserId,
+    );
+  }
+
+  static Future<void> sendGeofencePush({
+    required String placeName,
+    required bool isArriving,
+    required String icon,
+  }) async {
+    final profile = await getMyProfile();
+    await _sendFamilyPush(
+      kind: 'geofence',
+      title: isArriving
+          ? '$icon ${profile?.name ?? 'Keluargamu'} tiba di $placeName'
+          : '🚗 ${profile?.name ?? 'Keluargamu'} meninggalkan $placeName',
+      body: isArriving ? 'Sudah sampai dengan selamat.' : 'Baru saja keluar dari area.',
+    );
+  }
+
+  static Future<void> _sendFamilyPush({
+    required String kind,
+    required String title,
+    required String body,
+    String? targetUserId,
+  }) async {
+    try {
+      await client.functions.invoke('send-family-push', body: {
+        'kind': kind,
+        'title': title,
+        'body': body,
+        if (targetUserId != null) 'target_user_id': targetUserId,
+      });
+    } catch (e) {
+      debugPrint('FCM push tidak terkirim: $e');
+    }
   }
 
   static Future<void> cancelRingAlert(String id) async {

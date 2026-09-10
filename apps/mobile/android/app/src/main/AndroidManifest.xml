@@ -53,8 +53,7 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Workmanager background task receiver -->
-        <receiver android:name="dev.flutterbackground.worker.FlutterBackgroundWorker" android:exported="false"/>
+        <!-- Workmanager: worker di-resolve otomatis via SystemJobService (androidx.work) -->
         <receiver android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver" android:exported="false"/>
 
         <!--

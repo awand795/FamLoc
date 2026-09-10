@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../background_service.dart';
+import '../fcm_service.dart';
 import '../supabase_service.dart';
 import '../theme.dart';
 import 'map_home.dart';
@@ -38,6 +39,7 @@ class _AuthScreenState extends State<AuthScreen> {
       }
       try {
         await initializeBackgroundService();
+        await FcmService.registerCurrentDevice();
       } catch (_) {}
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(

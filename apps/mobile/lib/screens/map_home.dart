@@ -78,6 +78,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
   }
 
   Future<void> _bootstrap() async {
+    // 0. PENTING: Pastikan izin notifikasi sudah diminta (Android 13+).
+    // Tanpa ini TIDAK ADA notif SOS/geofence/baterai yang bisa tampil.
+    await NotificationService.ensurePermissionRequested();
+
     // 1. Ambil posisi terakhir dari cache hardware HP (0 milidetik - instan)
     try {
       final lastPos = await Geolocator.getLastKnownPosition();
@@ -513,8 +517,9 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       return false;
     }
 
-    // Jika pengguna hanya memberi izin "Saat aplikasi digunakan",
-    // edukasi agar memilih "Izinkan sepanjang waktu" agar tracking tidak mati saat layar HP mati
+    // KRITIS: Tanpa "Allow all the time" (ACCESS_BACKGROUND_LOCATION), lokasi BERHENTI
+    // dikirim saat layar mati / app ditutup. Kondisi ini adalah penyebab utama
+    // "lokasi tidak ter-track di HP lain". Wajib ditegakkan setiap kali app dibuka.
     if (checkAlways && perm == LocationPermission.whileInUse && mounted) {
       final shouldOpen = await showDialog<bool>(
         context: context,
@@ -551,10 +556,15 @@ class _MapHomeScreenState extends State<MapHomeScreen>
 
       if (shouldOpen == true) {
         await Geolocator.openAppSettings();
+        // Setelah kembali dari Settings, cek ulang; nilai sebelum membuka
+        // Settings masih "whileInUse" dan sebelumnya dianggap sukses.
+        perm = await Geolocator.checkPermission();
       }
     }
 
-    return perm == LocationPermission.always || perm == LocationPermission.whileInUse;
+    return checkAlways
+        ? perm == LocationPermission.always
+        : perm == LocationPermission.always || perm == LocationPermission.whileInUse;
   }
 
   Future<void> _toggleSharing(bool on) async {

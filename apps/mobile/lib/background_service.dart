@@ -39,14 +39,25 @@ Future<void> initializeBackgroundService() async {
   // Pastikan notification channel siap sebelum service aktif
   await NotificationService.initialize();
 
-  // Simpan user_id aktif ke SharedPreferences jika ada
+  // Service hanya boleh hidup bila pengguna memang masih membagikan lokasi.
+  // Jangan mengubah pilihan pengguna menjadi aktif secara diam-diam.
+  final prefs = await SharedPreferences.getInstance();
+  final sharingOn = prefs.getBool('famloc_sharing_on') ?? false;
+  if (!sharingOn) return;
+
+  // Android membutuhkan izin "Allow all the time" untuk akses GPS ketika UI
+  // ditutup. Jangan start FGS lebih dulu lalu gagal diam-diam di isolate.
+  if (Platform.isAndroid &&
+      await Geolocator.checkPermission() != LocationPermission.always) {
+    debugPrint('[BG] Service tidak dimulai: izin lokasi sepanjang waktu belum diberikan.');
+    return;
+  }
+
+  // Simpan user_id aktif ke SharedPreferences jika ada.
   final user = SupabaseService.currentUser;
   if (user != null) {
     try {
-      final prefs = await SharedPreferences.getInstance();
       await prefs.setString('famloc_user_id', user.id);
-      // Tandai sharing aktif karena fungsi ini dipanggil saat user MENGAKTIFKAN sharing
-      await prefs.setBool('famloc_sharing_on', true);
     } catch (_) {}
   }
 
@@ -126,6 +137,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   String? lastMyPlace; // Tempat saya saat ini
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
+  final Set<String> alertedLowBatteryUsers = {}; // 🔋 Anti-spam notifikasi baterai lemah
   DateTime lastHeartbeat = DateTime.fromMillisecondsSinceEpoch(0);
   String? lastRingAlertId; // ✅ Track ID ring alert agar tidak dering berulang setiap 8 detik
   const distCalc = Distance();
@@ -233,6 +245,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
                 'event_type': 'arrived',
                 'icon': currentIcon,
               });
+              await SupabaseService.sendGeofencePush(
+                placeName: currentPlace,
+                isArriving: true,
+                icon: currentIcon,
+              );
             } catch (_) {}
           } else {
             lastMyPlace = currentPlace;
@@ -269,6 +286,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
                 'event_type': 'departed',
                 'icon': '🚗',
               });
+              await SupabaseService.sendGeofencePush(
+                placeName: departedPlace,
+                isArriving: false,
+                icon: '🚗',
+              );
             } catch (_) {}
           }
         }
@@ -279,6 +301,9 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   }
 
   // A. GPS Hardware Stream (Mode Navigasi Cepat: update tiap 2 meter / 3 detik saat berkendara)
+  // CATATAN: Tidak pakai foregroundNotificationConfig geolocator karena kita SUDAH punya
+  // foreground service dari flutter_background_service (notif id 888).
+  // Dua FGS lokasi paralel = boros baterai & memicu Android/OEM membunuh service lebih cepat.
   LocationSettings locationSettings;
   if (defaultTargetPlatform == TargetPlatform.android) {
     locationSettings = AndroidSettings(
@@ -286,14 +311,6 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       distanceFilter: 3, // Bergerak 3 meter langsung kirim
       intervalDuration: const Duration(seconds: 4), // Interval update hardware 4 detik
       forceLocationManager: true, // KRITIS: Akses GPS hardware langsung tanpa throttling Google Play Services saat layar mati
-      foregroundNotificationConfig: const ForegroundNotificationConfig(
-        notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
-        notificationText: 'Menyinkronkan lokasi keluarga secara realtime...',
-        notificationChannelName: 'FamLoc Tracking Latar Belakang',
-        notificationIcon: AndroidResource(name: 'ic_launcher', defType: 'mipmap'),
-        enableWakeLock: true, // KRITIS: Mencegah CPU tidur saat layar mati!
-        setOngoing: true,
-      ),
     );
   } else {
     locationSettings = const LocationSettings(
@@ -438,6 +455,16 @@ void onBackgroundServiceStart(ServiceInstance service) async {
               icon: '🚗',
             );
           }
+        }
+
+        // 🔋 Notifikasi Baterai Lemah Keluarga (< 20%) — sekali per HP sampai baterai naik
+        if (f.battery != null && f.battery! < 20) {
+          if (!alertedLowBatteryUsers.contains(f.userId)) {
+            alertedLowBatteryUsers.add(f.userId);
+            NotificationService.showBatteryNotification(name: f.name, battery: f.battery!);
+          }
+        } else {
+          alertedLowBatteryUsers.remove(f.userId);
         }
 
         // Peringatan Kecepatan Tinggi Keluarga (> 80 km/jam)

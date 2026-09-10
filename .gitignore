@@ -1,5 +1,9 @@
 # Environment & secrets
 .env
+.env.*
+apps/mobile/android/app/google-services.json
+supabase/functions/.env
+supabase/.temp/
 .env.local
 .env.*.local
 

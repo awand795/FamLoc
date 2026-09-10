@@ -7,6 +7,17 @@ class NotificationService {
 
   static bool _isInitialized = false;
 
+  /// Pastikan izin notifikasi diminta (Android 13+ / API 33 POST_NOTIFICATIONS).
+  /// Aman dipanggil berulang kali — jika sudah diberikan, tidak terjadi apa-apa.
+  /// Tanpa izin ini, TIDAK ADA notif SOS/geofence/baterai yang bisa muncul.
+  static Future<void> ensurePermissionRequested() async {
+    try {
+      final androidImpl = _notificationsPlugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await androidImpl?.requestNotificationsPermission();
+    } catch (_) {}
+  }
+
   static const String channelSos = 'famloc_sos';
   static const String channelGeofence = 'famloc_geofence';
   static const String channelCheckin = 'famloc_checkin';
@@ -173,6 +184,37 @@ class NotificationService {
 
     final notifId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
     await _notificationsPlugin.show(notifId, title, body, details);
+  }
+
+  /// Menampilkan data-message FCM saat app berada di foreground atau menerima
+  /// data-only message di background. Saat app terminated Android menampilkan
+  /// payload notification dari FCM secara langsung.
+  static Future<void> showRemoteNotification(Map<String, dynamic> data) async {
+    await initialize();
+    final kind = data['kind']?.toString() ?? 'general';
+    final channel = switch (kind) {
+      'sos' => channelSos,
+      'geofence' => channelGeofence,
+      'checkin' => channelCheckin,
+      'battery' => channelBattery,
+      _ => channelCheckin,
+    };
+    final title = data['title']?.toString() ?? 'FamLoc';
+    final body = data['body']?.toString() ?? '';
+    final details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        channel,
+        channel == channelSos ? 'Peringatan Darurat SOS' : 'Kabar FamLoc',
+        importance: kind == 'sos' ? Importance.max : Importance.high,
+        priority: kind == 'sos' ? Priority.max : Priority.high,
+        playSound: true,
+        enableVibration: true,
+        visibility: NotificationVisibility.public,
+      ),
+    );
+    await _notificationsPlugin.show(
+      DateTime.now().millisecondsSinceEpoch.remainder(100000), title, body, details,
+    );
   }
 
   /// 💬 Notifikasi Pesan Kabar Kilat (Quick Check-in)
