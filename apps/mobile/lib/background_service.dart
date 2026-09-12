@@ -47,9 +47,11 @@ Future<void> initializeBackgroundService() async {
 
   // Android membutuhkan izin "Allow all the time" untuk akses GPS ketika UI
   // ditutup. Jangan start FGS lebih dulu lalu gagal diam-diam di isolate.
+  final perm = await Geolocator.checkPermission();
   if (Platform.isAndroid &&
-      await Geolocator.checkPermission() != LocationPermission.always) {
-    debugPrint('[BG] Service tidak dimulai: izin lokasi sepanjang waktu belum diberikan.');
+      perm != LocationPermission.always &&
+      perm != LocationPermission.whileInUse) {
+    debugPrint('[BG] Service tidak dimulai: izin lokasi belum diberikan ($perm).');
     return;
   }
 
@@ -224,9 +226,9 @@ void onBackgroundServiceStart(ServiceInstance service) async {
         final nowMs = DateTime.now().millisecondsSinceEpoch;
 
         if (currentPlace != null && currentPlace != lastMyPlace) {
-          // Hanya beri notifikasi jika belum pernah di-notif dalam 15 menit terakhir untuk tempat yang sama
+          // Hanya beri notifikasi jika belum pernah di-notif dalam 60 menit terakhir untuk tempat yang sama
           final lastAlertTime = prefs.getInt('last_alert_self_$currentPlace') ?? 0;
-          if (nowMs - lastAlertTime > 15 * 60 * 1000) {
+          if (nowMs - lastAlertTime > 60 * 60 * 1000) {
             await prefs.setInt('last_alert_self_$currentPlace', nowMs);
             lastMyPlace = currentPlace;
             await prefs.setString('saved_last_place_self', currentPlace);
@@ -236,6 +238,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
               placeName: currentPlace,
               isArriving: true,
               icon: currentIcon,
+              eventTime: DateTime.now(),
             );
 
             try {
@@ -255,12 +258,12 @@ void onBackgroundServiceStart(ServiceInstance service) async {
             lastMyPlace = currentPlace;
           }
         } else if (currentPlace == null && lastMyPlace != null && lastMyPlace!.isNotEmpty) {
-          // Cek buffer hysteresis (radius + 40m) agar tidak bouncing akibat deviasi GPS di gedung
+          // Cek buffer hysteresis (radius + 150m) agar tidak bouncing akibat deviasi GPS di gedung
           bool stillNear = false;
           for (final p in cachedPlaces) {
             if (p.name == lastMyPlace) {
               final d = distCalc.as(LengthUnit.Meter, myPos, LatLng(p.lat, p.lng));
-              if (d <= p.radius + 40) {
+              if (d <= p.radius + 150) {
                 stillNear = true;
                 break;
               }
@@ -277,6 +280,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
               placeName: departedPlace,
               isArriving: false,
               icon: '🚗',
+              eventTime: DateTime.now(),
             );
 
             try {
@@ -307,10 +311,16 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   LocationSettings locationSettings;
   if (defaultTargetPlatform == TargetPlatform.android) {
     locationSettings = AndroidSettings(
-      accuracy: LocationAccuracy.bestForNavigation, // Akurasi tertinggi untuk navigasi & berkendara
-      distanceFilter: 3, // Bergerak 3 meter langsung kirim
-      intervalDuration: const Duration(seconds: 4), // Interval update hardware 4 detik
-      forceLocationManager: true, // KRITIS: Akses GPS hardware langsung tanpa throttling Google Play Services saat layar mati
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 3,
+      intervalDuration: const Duration(seconds: 4),
+      forceLocationManager: false,
+      foregroundNotificationConfig: const ForegroundNotificationConfig(
+        notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
+        notificationText: 'Menyinkronkan lokasi secara realtime...',
+        enableWakeLock: true,
+        setOngoing: true,
+      ),
     );
   } else {
     locationSettings = const LocationSettings(
@@ -413,11 +423,11 @@ void onBackgroundServiceStart(ServiceInstance service) async {
           // Saat pertama kali terhubung: catat posisi awal keluarga tanpa spam notifikasi
           familyPlaces[f.userId] = fZone ?? '';
         } else if (fZone != null && fZone != prevZone && fZone.isNotEmpty) {
-          // Cek cooldown 15 menit agar tidak berulang
+          // Cek cooldown 60 menit agar tidak berulang
           final alertKey = 'last_alert_fam_${f.userId}_$fZone';
           final lastAlertTime = prefs.getInt(alertKey) ?? 0;
 
-          if (nowMs - lastAlertTime > 15 * 60 * 1000) {
+          if (nowMs - lastAlertTime > 60 * 60 * 1000) {
             await prefs.setInt(alertKey, nowMs);
             familyPlaces[f.userId] = fZone;
 
@@ -427,17 +437,18 @@ void onBackgroundServiceStart(ServiceInstance service) async {
               placeName: fZone,
               isArriving: true,
               icon: fIcon,
+              eventTime: DateTime.now(),
             );
           } else {
             familyPlaces[f.userId] = fZone;
           }
         } else if (fZone == null && prevZone != null && prevZone.isNotEmpty) {
-          // Cek buffer hysteresis (radius + 40m) sebelum menyatakan keluarga meninggalkan tempat
+          // Cek buffer hysteresis (radius + 150m) sebelum menyatakan keluarga meninggalkan tempat
           bool stillNear = false;
           for (final p in cachedPlaces) {
             if (p.name == prevZone) {
               final d = distCalc.as(LengthUnit.Meter, fPos, LatLng(p.lat, p.lng));
-              if (d <= p.radius + 40) {
+              if (d <= p.radius + 150) {
                 stillNear = true;
                 break;
               }
@@ -453,6 +464,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
               placeName: departedZone,
               isArriving: false,
               icon: '🚗',
+              eventTime: DateTime.now(),
             );
           }
         }

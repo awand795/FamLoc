@@ -267,8 +267,14 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       locationSettings = AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 3,
-        forceLocationManager: true,
+        forceLocationManager: false,
         intervalDuration: const Duration(seconds: 4),
+        foregroundNotificationConfig: const ForegroundNotificationConfig(
+          notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
+          notificationText: 'Menyinkronkan lokasi secara realtime...',
+          enableWakeLock: true,
+          setOngoing: true,
+        ),
       );
     } else {
       locationSettings = const LocationSettings(
@@ -392,20 +398,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       } else if (currentZone != null && currentZone != previousZone && currentZone.isNotEmpty) {
         _lastKnownGeofenceZone[m.userId] = currentZone;
         _showSnack('$currentZoneIcon ${m.name} sudah tiba di $currentZone');
-        // ✅ Push notifikasi ke HP ini agar muncul di notif bar walaupun app ditutup
-        NotificationService.showGeofenceNotification(
-          name: m.name,
-          placeName: currentZone,
-          isArriving: true,
-          icon: currentZoneIcon,
-        );
       } else if (currentZone == null && previousZone != null && previousZone.isNotEmpty) {
-        // Cek buffer hysteresis (radius + 40m) agar tidak bouncing akibat deviasi sinyal GPS
+        // Cek buffer hysteresis (radius + 150m) agar tidak bouncing akibat deviasi sinyal GPS
         bool stillNear = false;
         for (final p in _places) {
           if (p.name == previousZone) {
             final d = distCalc.as(LengthUnit.Meter, mPos, LatLng(p.lat, p.lng));
-            if (d <= p.radius + 40) {
+            if (d <= p.radius + 150) {
               stillNear = true;
               break;
             }
@@ -414,13 +413,6 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         if (!stillNear) {
           _lastKnownGeofenceZone[m.userId] = '';
           _showSnack('🚗 ${m.name} baru saja meninggalkan $previousZone');
-          // ✅ Push notifikasi keberangkatan
-          NotificationService.showGeofenceNotification(
-            name: m.name,
-            placeName: previousZone,
-            isArriving: false,
-            icon: '🚗',
-          );
         }
       }
 

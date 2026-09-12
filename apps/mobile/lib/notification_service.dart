@@ -152,14 +152,18 @@ class NotificationService {
     required String placeName,
     required bool isArriving,
     String icon = '🏠',
+    DateTime? eventTime,
   }) async {
+    final time = eventTime ?? DateTime.now();
+    final timeStr = '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
+
     final title = isArriving
-        ? '$icon $name Sudah Tiba di $placeName'
-        : '🚗 $name Meninggalkan $placeName';
+        ? '$icon $name Tiba di $placeName ($timeStr)'
+        : '🚗 $name Meninggalkan $placeName ($timeStr)';
 
     final body = isArriving
-        ? '$name baru saja sampai di area $placeName dengan selamat.'
-        : '$name baru saja keluar dari area $placeName.';
+        ? '$name sudah sampai di area $placeName pada pukul $timeStr dengan selamat.'
+        : '$name terpantau meninggalkan area $placeName pada pukul $timeStr.';
 
     final androidDetails = AndroidNotificationDetails(
       channelGeofence,
@@ -182,7 +186,8 @@ class NotificationService {
 
     final details = NotificationDetails(android: androidDetails, iOS: iosDetails);
 
-    final notifId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+    // ID stabil per tempat agar update tidak menumpuk bunyi beruntun
+    final notifId = (name.hashCode ^ placeName.hashCode).abs() % 5000 + 2000;
     await _notificationsPlugin.show(notifId, title, body, details);
   }
 
