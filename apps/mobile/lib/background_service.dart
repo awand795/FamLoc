@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 import 'supabase_service.dart';
 
-const String kForegroundChannelId = 'famloc_foreground';
+const String kForegroundChannelId = 'famloc_foreground_silent';
 const int kForegroundNotificationId = 888;
 
 /// Minta user untuk mengecualikan FamLoc dari optimasi baterai Android.
