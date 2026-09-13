@@ -455,7 +455,7 @@ class SupabaseService {
         'p_speed': speed,
         'p_battery': battery,
         'p_is_mocked': isMocked,
-      });
+      }).timeout(const Duration(seconds: 8));
     } catch (e) {
       debugPrint('Warning: RPC update_location_background error ($e), fallback direct upsert');
       try {

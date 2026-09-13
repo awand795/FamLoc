@@ -71,6 +71,7 @@ Future<void> initializeBackgroundService() async {
     androidConfiguration: AndroidConfiguration(
       onStart: onBackgroundServiceStart,
       autoStart: true,
+      autoStartOnBoot: true,
       isForegroundMode: true,
       notificationChannelId: kForegroundChannelId,
       initialNotificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
@@ -137,6 +138,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   List<PlaceZone> cachedPlaces = [];
   DateTime lastPlacesFetch = DateTime.fromMillisecondsSinceEpoch(0);
   String? lastMyPlace; // Tempat saya saat ini
+  Position? lastKnownMyPos; // Simpan koordinat terakhir agar heartbeat tidak putus saat HP diam
   final Map<String, String> familyPlaces = {}; // userId -> placeName
   final Set<String> alertedSpeedUsers = {};
   final Set<String> alertedLowBatteryUsers = {}; // 🔋 Anti-spam notifikasi baterai lemah
@@ -166,6 +168,7 @@ void onBackgroundServiceStart(ServiceInstance service) async {
 
   /// Handler untuk setiap koordinat GPS saya yang baru
   Future<void> handleMyLocation(Position pos) async {
+    lastKnownMyPos = pos;
     try {
       final prefs = await SharedPreferences.getInstance();
       final sharingOn = prefs.getBool('famloc_sharing_on') ?? true;
@@ -367,13 +370,13 @@ void onBackgroundServiceStart(ServiceInstance service) async {
           pos = await Geolocator.getCurrentPosition(
             locationSettings: defaultTargetPlatform == TargetPlatform.android
                 ? AndroidSettings(
-                    accuracy: LocationAccuracy.high,
-                    timeLimit: const Duration(seconds: 8),
-                    forceLocationManager: true,
+                    accuracy: LocationAccuracy.medium,
+                    timeLimit: const Duration(seconds: 5),
+                    forceLocationManager: false,
                   )
                 : const LocationSettings(
-                    accuracy: LocationAccuracy.high,
-                    timeLimit: Duration(seconds: 8),
+                    accuracy: LocationAccuracy.medium,
+                    timeLimit: Duration(seconds: 5),
                   ),
           );
         } catch (_) {
@@ -382,8 +385,30 @@ void onBackgroundServiceStart(ServiceInstance service) async {
           } catch (_) {}
         }
 
+        pos ??= lastKnownMyPos;
+        if (pos == null) {
+          try {
+            pos = await Geolocator.getLastKnownPosition();
+          } catch (_) {}
+        }
+
         if (pos != null) {
+          lastKnownMyPos = pos;
           await handleMyLocation(pos);
+        } else {
+          // Fallback darurat: jika koordinat belum tersedia, tetap kirim update baterai & waktu aktif
+          try {
+            int? batteryLevel;
+            try {
+              final b = await Battery().batteryLevel;
+              batteryLevel = (b >= 0 && b <= 100) ? b : null;
+            } catch (_) {}
+            await SupabaseService.client.from('user_locations').update({
+              'battery': batteryLevel,
+              'updated_at': DateTime.now().toIso8601String(),
+            }).eq('user_id', userId);
+            lastHeartbeat = DateTime.now();
+          } catch (_) {}
         }
       }
 
