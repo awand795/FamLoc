@@ -12,7 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'notification_service.dart';
 import 'supabase_service.dart';
 
-const String kForegroundChannelId = 'famloc_foreground_silent';
+const String kForegroundChannelId = 'famloc_foreground_active';
 const int kForegroundNotificationId = 888;
 
 /// Minta user untuk mengecualikan FamLoc dari optimasi baterai Android.
@@ -315,12 +315,6 @@ void onBackgroundServiceStart(ServiceInstance service) async {
       distanceFilter: 3,
       intervalDuration: const Duration(seconds: 4),
       forceLocationManager: false,
-      foregroundNotificationConfig: const ForegroundNotificationConfig(
-        notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
-        notificationText: 'Menyinkronkan lokasi secara realtime...',
-        enableWakeLock: true,
-        setOngoing: true,
-      ),
     );
   } else {
     locationSettings = const LocationSettings(

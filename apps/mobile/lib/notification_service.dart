@@ -51,17 +51,18 @@ class NotificationService {
     if (androidImpl != null) {
       await androidImpl.requestNotificationsPermission();
 
-      // Hapus channel lama yang bersuara jika ada di HP pengguna
+      // Hapus channel lama jika ada di HP pengguna
       try {
         await androidImpl.deleteNotificationChannel('famloc_foreground');
+        await androidImpl.deleteNotificationChannel('famloc_foreground_silent');
       } catch (_) {}
 
-      // Channel 1: Foreground Service 24/7 (Importance.low agar senyap: TANPA bunyi & TANPA getar saat update lokasi/baterai)
+      // Channel 1: Foreground Service 24/7 (Importance.defaultImportance agar selalu tampil di daftar 'Aplikasi Aktif' Android & tidak di-kill OEM, tapi playSound & enableVibration false agar senyap)
       const foregroundChannel = AndroidNotificationChannel(
-        'famloc_foreground_silent',
+        'famloc_foreground_active',
         'Layanan Latar Belakang FamLoc',
-        description: 'Menampilkan status pembaruan lokasi dan baterai keluarga secara realtime (senyap)',
-        importance: Importance.low,
+        description: 'Menampilkan status pembaruan lokasi dan baterai keluarga secara realtime',
+        importance: Importance.defaultImportance,
         playSound: false,
         enableVibration: false,
         showBadge: false,

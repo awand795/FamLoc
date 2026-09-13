@@ -269,12 +269,6 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         distanceFilter: 3,
         forceLocationManager: false,
         intervalDuration: const Duration(seconds: 4),
-        foregroundNotificationConfig: const ForegroundNotificationConfig(
-          notificationTitle: '📍 FamLoc Berbagi Lokasi Aktif',
-          notificationText: 'Menyinkronkan lokasi secara realtime...',
-          enableWakeLock: true,
-          setOngoing: true,
-        ),
       );
     } else {
       locationSettings = const LocationSettings(
