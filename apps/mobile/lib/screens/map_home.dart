@@ -11,6 +11,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../background_guide_helper.dart';
 import '../background_service.dart';
 import '../background_task.dart';
 import '../supabase_service.dart';
@@ -132,6 +133,20 @@ class _MapHomeScreenState extends State<MapHomeScreen>
     _pushTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _refreshSosAlerts();
       _refreshRingAlerts();
+    });
+
+    // ⚡ Cek panduan latar belakang anti-mati (khusus Vivo / Xiaomi / Oppo)
+    Future.delayed(const Duration(seconds: 2), () async {
+      if (!mounted) return;
+      try {
+        final seen = await BackgroundGuideHelper.hasSeenGuide();
+        final brand = await BackgroundGuideHelper.getDeviceManufacturer();
+        if (!seen && (brand.contains('vivo') || brand.contains('iqoo') || brand.contains('xiaomi') || brand.contains('oppo') || brand.contains('realme'))) {
+          if (mounted) {
+            await BackgroundGuideHelper.showBackgroundGuideSheet(context);
+          }
+        }
+      } catch (_) {}
     });
   }
 
@@ -1348,6 +1363,13 @@ class _MapHomeScreenState extends State<MapHomeScreen>
       appBar: AppBar(
         title: Text('Halo, ${_me?.name ?? ''} 👋'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.shield_outlined),
+            tooltip: 'Mode Anti-Mati (Latar Belakang)',
+            onPressed: () {
+              BackgroundGuideHelper.showBackgroundGuideSheet(context);
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.people_alt_rounded),
             tooltip: 'Keluargaku & Teman',

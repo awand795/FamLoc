@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../background_guide_helper.dart';
 import '../background_task.dart';
 import '../supabase_service.dart';
 import '../theme.dart';
@@ -254,6 +255,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: const Text('Ganti password'),
                     trailing: const Icon(Icons.chevron_right_rounded),
                     onTap: _changePasswordDialog,
+                  ),
+                ]),
+                const SizedBox(height: 14),
+                _SectionCard(title: '🛡️ Mode Latar Belakang (Anti-Mati)', children: [
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.bolt_rounded, color: FamColors.primary),
+                    title: const Text('Panduan Tetap Aktif 24 Jam'),
+                    subtitle: const Text('Konfigurasi Vivo / Autostart seperti Co Fit'),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => BackgroundGuideHelper.showBackgroundGuideSheet(context),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.only(top: 4, bottom: 4),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: FamColors.primary.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: FamColors.primary.withValues(alpha: 0.2)),
+                    ),
+                    child: const Text(
+                      '💡 Penting untuk HP Vivo: Aktifkan "Konsumsi Daya Latar Belakang Tinggi" agar pelacakan tidak terhenti saat layar mati.',
+                      style: TextStyle(fontSize: 12, color: FamColors.textDark, height: 1.4),
+                    ),
                   ),
                 ]),
                 const SizedBox(height: 14),
