@@ -65,6 +65,14 @@ class BackgroundGuideHelper {
     }
   }
 
+  /// Minimalkan aplikasi ke background tanpa membunuh proses (seperti WhatsApp / Co Fit)
+  static Future<void> moveTaskToBack() async {
+    if (!Platform.isAndroid) return;
+    try {
+      await _channel.invokeMethod('moveTaskToBack');
+    } catch (_) {}
+  }
+
   /// Cek apakah pengguna sudah pernah menutup dialog panduan
   static Future<bool> hasSeenGuide() async {
     try {

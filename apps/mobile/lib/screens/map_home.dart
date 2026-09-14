@@ -2,7 +2,6 @@ import 'dart:async';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -1353,10 +1352,10 @@ class _MapHomeScreenState extends State<MapHomeScreen>
         final now = DateTime.now();
         if (_lastBackPressTime == null || now.difference(_lastBackPressTime!) > const Duration(seconds: 2)) {
           _lastBackPressTime = now;
-          _showSnack('Tekan sekali lagi untuk keluar dari aplikasi');
+          _showSnack('Tekan sekali lagi untuk meminimalkan aplikasi');
           return;
         }
-        SystemNavigator.pop();
+        BackgroundGuideHelper.moveTaskToBack();
       },
       child: Scaffold(
       extendBodyBehindAppBar: true,

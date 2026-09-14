@@ -95,6 +95,17 @@
             android:foregroundServiceType="location"
             android:stopWithTask="false"
             tools:replace="android:exported" />
+
+        <!--
+            FamLoc KeepAlive Service (Co Fit Style):
+            START_STICKY + onTaskRemoved() respawn via AlarmManager.
+            Menjaga agar proses tidak mati saat aplikasi di-swipe dari Recent Apps tanpa perlu dikunci.
+        -->
+        <service
+            android:name=".FamLocKeepAliveService"
+            android:enabled="true"
+            android:exported="false"
+            android:stopWithTask="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

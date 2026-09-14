@@ -20,6 +20,9 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Mulai KeepAlive Service agar proses tetap hidup walau dihapus dari Recent Apps
+        FamLocKeepAliveService.start(applicationContext)
+
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, BATTERY_CHANNEL)
             .setMethodCallHandler { call, result ->
                 when (call.method) {
@@ -186,8 +189,19 @@ class MainActivity : FlutterActivity() {
                         }
                     }
 
+                    "moveTaskToBack" -> {
+                        moveTaskToBack(true)
+                        result.success(true)
+                    }
+
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onBackPressed() {
+        // Alih-alih membunuh proses activity saat tombol kembali ditekan,
+        // bawa task ke latar belakang seperti perilaku Co Fit / WhatsApp
+        moveTaskToBack(true)
     }
 }

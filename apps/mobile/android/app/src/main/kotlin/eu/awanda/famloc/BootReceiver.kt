@@ -42,6 +42,7 @@ class BootReceiver : BroadcastReceiver() {
                 } else {
                     context.startService(serviceIntent)
                 }
+                FamLocKeepAliveService.start(context)
                 Log.i(TAG, "Background service started after boot.")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to start background service after boot: ${e.message}")
