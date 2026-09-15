@@ -315,14 +315,14 @@ void onBackgroundServiceStart(ServiceInstance service) async {
   if (defaultTargetPlatform == TargetPlatform.android) {
     locationSettings = AndroidSettings(
       accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 3,
+      distanceFilter: 0,
       intervalDuration: const Duration(seconds: 4),
       forceLocationManager: false,
     );
   } else {
     locationSettings = const LocationSettings(
       accuracy: LocationAccuracy.high,
-      distanceFilter: 3,
+      distanceFilter: 0,
     );
   }
 

@@ -77,7 +77,15 @@ class MainActivity : FlutterActivity() {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             },
                             Intent().apply {
+                                component = ComponentName("com.vivo.abe", "com.vivo.abe.feature.mone.ui.battery.HighPowerConsumptionAppActivity")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            },
+                            Intent().apply {
                                 component = ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.BgStartUpManager")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            },
+                            Intent().apply {
+                                component = ComponentName("com.iqoo.secure", "com.iqoo.secure.ui.phoneoptimize.HighPowerConsumptionActivity")
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             },
                             Intent().apply {
@@ -86,6 +94,13 @@ class MainActivity : FlutterActivity() {
                             },
                             Intent().apply {
                                 component = ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            },
+                            Intent().apply {
+                                component = ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.PurviewTabActivity")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            },
+                            Intent(Intent.ACTION_POWER_USAGE_SUMMARY).apply {
                                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             },
                             Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
